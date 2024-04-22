@@ -1,7 +1,7 @@
 SOURCES=$(wildcard *.c)
 OBJECTS=$(SOURCES:.c=.o)
 CC=c99
-CFLAGS=-O3 -march=native -mtune=native -g
+CFLAGS=-Wall -Wextra -pedantic -O3 -march=native -mtune=native -g
 LDFLAGS=-lglfw -lGL -lGLEW -lm
 
 .PHONY: all clean
