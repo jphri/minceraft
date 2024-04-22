@@ -1,8 +1,10 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <math.h>
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
 
+#include "util.h"
 #include "glutil.h"
 #include "linmath.h"
 
@@ -14,9 +16,13 @@
 #define M_PI_2 (M_PI * 0.5)
 #endif
 
-#define EPSLON 0.0000001
+#define EPSLON 0.00001
 #define MAX_PITCH (M_PI_2 - EPSLON)
 #define PLAYER_SPEED 4.0
+
+#define CHUNK_SIZE 16
+#define LAST_BLOCK (CHUNK_SIZE - 1)
+#define BLOCK_SCALE 0.5
 
 typedef struct {
 	vec3 position;
@@ -29,6 +35,15 @@ typedef struct {
 	vec3 camera_view;
 } Player;
 
+typedef struct {
+	int blocks[CHUNK_SIZE][CHUNK_SIZE][CHUNK_SIZE];
+	unsigned int chunk_vbo, chunk_vao;
+	unsigned int vert_count;
+} Chunk;
+
+void chunk_randomize(Chunk *chunk);
+void chunk_generate_buffers(Chunk *chunk);
+void chunk_generate_face(Chunk *chunk, int x, int y, int z, ArrayBuffer *output);
 static void player_update(Player *player, float delta);
 
 static void load_programs();
@@ -52,6 +67,7 @@ static unsigned int projection_uni, view_uni;
 static unsigned int quad_buffer, quad_vao;
 
 static mat4x4 projection, view;
+static Chunk chunk;
 
 int
 main()
@@ -76,6 +92,9 @@ main()
 	load_programs();
 	load_buffers();
 
+	chunk_randomize(&chunk);
+	chunk_generate_buffers(&chunk);
+
 	player.yaw = 0.0;
 	player.pitch = 0.0;
 	player.position[0] =   0;
@@ -97,16 +116,21 @@ main()
 
 
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		glEnable(GL_DEPTH_TEST);
+		glEnable(GL_CULL_FACE);
+		glCullFace(GL_CCW);
 		
 		glUseProgram(chunk_program);
 		glUniformMatrix4fv(projection_uni, 1, GL_FALSE, &projection[0][0]);
 		glUniformMatrix4fv(view_uni, 1, GL_FALSE, &view[0][0]);
 
 		glBindVertexArray(quad_vao);
-		glDrawArrays(GL_TRIANGLES, 0, 6);
+		glDrawArrays(GL_TRIANGLES, 0, chunk.vert_count);
 		glBindVertexArray(0);
 
 		glUseProgram(0);
+		glDisable(GL_DEPTH_TEST);
+		glDisable(GL_CULL_FACE);
 
 		glfwSwapBuffers(window);
 		glfwPollEvents();
@@ -204,3 +228,98 @@ player_update(Player *player, float delta)
 
 	mat4x4_look_at(view, player->position, front_dir, (vec3){ 0.0, 1.0, 0.0 });
 }
+
+void
+chunk_randomize(Chunk *chunk)
+{
+	for(int z = 0; z < CHUNK_SIZE; z++)
+	for(int y = 0; y < CHUNK_SIZE; y++)
+	for(int x = 0; x < CHUNK_SIZE; x++) {
+		chunk->blocks[x][y][z] = rand() % 2;
+	}
+}
+
+void
+chunk_generate_buffers(Chunk *chunk)
+{
+	ArrayBuffer buffer;
+	
+	arrbuf_init(&buffer);
+	for(int z = 0; z < CHUNK_SIZE; z++)
+	for(int y = 0; y < CHUNK_SIZE; y++)
+	for(int x = 0; x < CHUNK_SIZE; x++) {
+		if(chunk->blocks[z][y][x])
+			chunk_generate_face(chunk, x, y, z, &buffer);
+	}
+	chunk->vert_count = arrbuf_length(&buffer, sizeof(Vertex));
+
+	chunk->chunk_vbo = ugl_create_buffer(GL_STATIC_DRAW, buffer.size, buffer.data);
+	quad_vao = ugl_create_vao(2, (VaoSpec[]){
+		{ 0, 3, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, position), 0, chunk->chunk_vbo },
+		{ 1, 2, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, texcoord), 0, chunk->chunk_vbo },
+	});
+	arrbuf_free(&buffer);
+	UGL_ASSERT();
+}
+
+void
+chunk_generate_face(Chunk *chunk, int x, int y, int z, ArrayBuffer *buffer)
+{
+	#define INSERT_VERTEX(...) \
+		arrbuf_insert(buffer, sizeof(Vertex), &(Vertex){ __VA_ARGS__ })
+
+	if(z == 0 || chunk->blocks[z - 1][y][x] == 0) {
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + x, -BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { 0.0, 0.0 } );
+		INSERT_VERTEX(.position = { -BLOCK_SCALE + x, -BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { 1.0, 0.0 } );
+		INSERT_VERTEX(.position = { -BLOCK_SCALE + x,  BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { 1.0, 1.0 } );
+		INSERT_VERTEX(.position = { -BLOCK_SCALE + x,  BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { 1.0, 1.0 } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + x,  BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { 0.0, 1.0 } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + x, -BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { 0.0, 0.0 } );
+	}
+
+	if(z == LAST_BLOCK || chunk->blocks[z + 1][y][x] == 0) {
+		INSERT_VERTEX(.position = { -BLOCK_SCALE + x, -BLOCK_SCALE + y, BLOCK_SCALE + z }, .texcoord = { 0.0, 0.0 } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + x, -BLOCK_SCALE + y, BLOCK_SCALE + z }, .texcoord = { 1.0, 0.0 } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + x,  BLOCK_SCALE + y, BLOCK_SCALE + z }, .texcoord = { 1.0, 1.0 } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + x,  BLOCK_SCALE + y, BLOCK_SCALE + z }, .texcoord = { 1.0, 1.0 } );
+		INSERT_VERTEX(.position = { -BLOCK_SCALE + x,  BLOCK_SCALE + y, BLOCK_SCALE + z }, .texcoord = { 0.0, 1.0 } );
+		INSERT_VERTEX(.position = { -BLOCK_SCALE + x, -BLOCK_SCALE + y, BLOCK_SCALE + z }, .texcoord = { 0.0, 0.0 } );
+	}
+	
+	if(y == 0 || chunk->blocks[z][y - 1][x] == 0) {
+		INSERT_VERTEX(.position = { -BLOCK_SCALE + x, -BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { 0.0, 0.0 } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + x, -BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { 1.0, 0.0 } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + x, -BLOCK_SCALE + y,  BLOCK_SCALE + z }, .texcoord = { 1.0, 1.0 } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + x, -BLOCK_SCALE + y,  BLOCK_SCALE + z }, .texcoord = { 1.0, 1.0 } );
+		INSERT_VERTEX(.position = { -BLOCK_SCALE + x, -BLOCK_SCALE + y,  BLOCK_SCALE + z }, .texcoord = { 0.0, 1.0 } );
+		INSERT_VERTEX(.position = { -BLOCK_SCALE + x, -BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { 0.0, 0.0 } );
+	}
+
+	if(y == LAST_BLOCK || chunk->blocks[z][y + 1][x] == 0) {
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + x,  BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { 0.0, 0.0 } );
+		INSERT_VERTEX(.position = { -BLOCK_SCALE + x,  BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { 1.0, 0.0 } );
+		INSERT_VERTEX(.position = { -BLOCK_SCALE + x,  BLOCK_SCALE + y,  BLOCK_SCALE + z }, .texcoord = { 1.0, 1.0 } );
+		INSERT_VERTEX(.position = { -BLOCK_SCALE + x,  BLOCK_SCALE + y,  BLOCK_SCALE + z }, .texcoord = { 1.0, 1.0 } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + x,  BLOCK_SCALE + y,  BLOCK_SCALE + z }, .texcoord = { 0.0, 1.0 } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + x,  BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { 0.0, 0.0 } );
+	}
+
+	if(x == 0 || chunk->blocks[z][y][x - 1] == 0) {
+		INSERT_VERTEX(.position = { -BLOCK_SCALE + x, -BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { 0.0, 0.0 } );
+		INSERT_VERTEX(.position = { -BLOCK_SCALE + x, -BLOCK_SCALE + y,  BLOCK_SCALE + z }, .texcoord = { 1.0, 0.0 } );
+		INSERT_VERTEX(.position = { -BLOCK_SCALE + x,  BLOCK_SCALE + y,  BLOCK_SCALE + z }, .texcoord = { 1.0, 1.0 } );
+		INSERT_VERTEX(.position = { -BLOCK_SCALE + x,  BLOCK_SCALE + y,  BLOCK_SCALE + z }, .texcoord = { 1.0, 1.0 } );
+		INSERT_VERTEX(.position = { -BLOCK_SCALE + x,  BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { 0.0, 1.0 } );
+		INSERT_VERTEX(.position = { -BLOCK_SCALE + x, -BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { 0.0, 0.0 } );
+	}
+
+	if(x == LAST_BLOCK || chunk->blocks[z][y][x + 1] == 0) {
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + x, -BLOCK_SCALE + y,  BLOCK_SCALE + z }, .texcoord = { 0.0, 0.0 } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + x, -BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { 1.0, 0.0 } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + x,  BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { 1.0, 1.0 } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + x,  BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { 1.0, 1.0 } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + x,  BLOCK_SCALE + y,  BLOCK_SCALE + z }, .texcoord = { 0.0, 1.0 } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + x, -BLOCK_SCALE + y,  BLOCK_SCALE + z }, .texcoord = { 0.0, 0.0 } );
+	}
+}
+
