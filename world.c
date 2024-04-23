@@ -220,3 +220,38 @@ find_free_chunk()
 	return chunk;
 }
 
+Block
+world_get_block(int x, int y, int z)
+{
+	int chunk_x = (x / CHUNK_SIZE) * CHUNK_SIZE;
+	int chunk_y = (y / CHUNK_SIZE) * CHUNK_SIZE;
+	int chunk_z = (z / CHUNK_SIZE) * CHUNK_SIZE;
+
+	Chunk *ch = find_chunk(chunk_x, chunk_y, chunk_z);
+	if(!ch)
+		return BLOCK_UNLOADED;
+
+	x = ((x % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+	y = ((y % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+	z = ((z % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+
+	return ch->blocks[z][y][x];
+}
+
+void
+world_set_block(int x, int y, int z, Block block)
+{
+	int chunk_x = (x / CHUNK_SIZE) * CHUNK_SIZE;
+	int chunk_y = (y / CHUNK_SIZE) * CHUNK_SIZE;
+	int chunk_z = (z / CHUNK_SIZE) * CHUNK_SIZE;
+
+	Chunk *ch = find_chunk(chunk_x, chunk_y, chunk_z);
+	if(!ch)
+		return;
+
+	x = ((x % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+	y = ((y % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+	z = ((z % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+
+	ch->blocks[z][y][x] = block;
+}

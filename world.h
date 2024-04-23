@@ -7,7 +7,8 @@ typedef enum {
 	BLOCK_NULL,
 	BLOCK_GRASS,
 	BLOCK_DIRT,
-	BLOCK_LAST
+	BLOCK_LAST,
+	BLOCK_UNLOADED = -1
 } Block;
 
 typedef enum {
@@ -37,4 +38,6 @@ void world_render();
 void world_enqueue_load(int x, int y, int z);
 void world_enqueue_unload(int x, int y, int z);
 
+Block world_get_block(int x, int y, int z);
+void  world_set_block(int x, int y, int z, Block block);
 #endif
