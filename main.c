@@ -4,12 +4,14 @@
 #include <math.h>
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
+#include <assert.h>
 
+#include "cubegame.h"
 #include "util.h"
 #include "glutil.h"
 #include "linmath.h"
+#include "world.h"
 
-#define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
 #ifndef M_PI
@@ -28,22 +30,6 @@
 #define LAST_BLOCK (CHUNK_SIZE - 1)
 #define BLOCK_SCALE 0.5
 
-typedef enum {
-	BLOCK_NULL,
-	BLOCK_GRASS,
-	BLOCK_DIRT,
-	BLOCK_LAST
-} Block;
-
-typedef enum {
-	BACK,
-	FRONT,
-	LEFT,
-	RIGHT,
-	BOTTOM,
-	TOP,
-} Direction;
-
 typedef struct {
 	vec3 position;
 	vec2 texcoord;
@@ -55,20 +41,13 @@ typedef struct {
 	vec3 camera_view;
 } Player;
 
-typedef struct {
-	int blocks[CHUNK_SIZE][CHUNK_SIZE][CHUNK_SIZE];
-	unsigned int chunk_vbo, chunk_vao;
-	unsigned int vert_count;
-} Chunk;
 
 typedef struct {
 	unsigned int texture;
 	int w, h;
 } Texture;
 
-void chunk_randomize(Chunk *chunk);
-void chunk_generate_buffers(Chunk *chunk);
-void chunk_generate_face(Chunk *chunk, int x, int y, int z, ArrayBuffer *output);
+static void chunk_generate_face(Chunk *chunk, int x, int y, int z, ArrayBuffer *output);
 static void player_update(Player *player, float delta);
 
 static void get_cube_face(Texture *texture, int tex_id, vec2 min, vec2 max);
@@ -101,7 +80,7 @@ static int faces[LAST_BLOCK][6] = {
 
 static GLFWwindow *window;
 static unsigned int chunk_program;
-static unsigned int projection_uni, view_uni, terrain_uni;
+static unsigned int projection_uni, view_uni, terrain_uni, chunk_position_uni;
 
 static unsigned int quad_buffer, quad_vao;
 
@@ -134,8 +113,11 @@ main()
 	load_buffers();
 	load_textures();
 
-	chunk_randomize(&chunk);
-	chunk_generate_buffers(&chunk);
+	world_init();
+	for(int x = 0; x < 10; x++)
+		for(int z = 0; z < 10; z++) {
+			world_enqueue_load(x * CHUNK_SIZE, 0, z * CHUNK_SIZE);
+		}
 
 	player.yaw = 0.0;
 	player.pitch = 0.0;
@@ -158,31 +140,26 @@ main()
 
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		glEnable(GL_DEPTH_TEST);
-		glEnable(GL_CULL_FACE);
-		glCullFace(GL_CCW);
 		
 		glUseProgram(chunk_program);
 		glUniformMatrix4fv(projection_uni, 1, GL_FALSE, &projection[0][0]);
 		glUniformMatrix4fv(view_uni, 1, GL_FALSE, &view[0][0]);
 		glUniform1i(terrain_uni, 0);
 
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, terrain_uni);
-
-		glBindVertexArray(quad_vao);
-		glDrawArrays(GL_TRIANGLES, 0, chunk.vert_count);
-		glBindVertexArray(0);
-
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, 0);
+		world_render();
 
 		glUseProgram(0);
+
 		glDisable(GL_DEPTH_TEST);
 		glDisable(GL_CULL_FACE);
 
 		glfwSwapBuffers(window);
 		glfwPollEvents();
+
+		while(glGetError() != GL_NO_ERROR);
 	}
+
+	world_terminate();
 
 	glfwDestroyWindow(window);
 	glfwTerminate();
@@ -213,7 +190,7 @@ load_programs()
 	projection_uni = glGetUniformLocation(chunk_program, "u_Projection");
 	view_uni       = glGetUniformLocation(chunk_program, "u_View");
 	terrain_uni    = glGetUniformLocation(chunk_program, "u_Terrain");
-
+	chunk_position_uni = glGetUniformLocation(chunk_program, "u_ChunkPosition");
 	UGL_ASSERT();
 }
 
@@ -276,43 +253,6 @@ player_update(Player *player, float delta)
 	vec3_add(front_dir, player->position, front_dir);
 
 	mat4x4_look_at(view, player->position, front_dir, (vec3){ 0.0, 1.0, 0.0 });
-}
-
-void
-chunk_randomize(Chunk *chunk)
-{
-	for(int z = 0; z < CHUNK_SIZE; z++)
-	for(int y = 0; y < CHUNK_SIZE; y++)
-	for(int x = 0; x < CHUNK_SIZE; x++) {
-		if(rand() & 1) {
-			chunk->blocks[x][y][z] = rand() % (BLOCK_DIRT - BLOCK_GRASS) + BLOCK_GRASS;
-		} else {
-			chunk->blocks[x][y][z] = 0;
-		}
-	}
-}
-
-void
-chunk_generate_buffers(Chunk *chunk)
-{
-	ArrayBuffer buffer;
-	
-	arrbuf_init(&buffer);
-	for(int z = 0; z < CHUNK_SIZE; z++)
-		for(int y = 0; y < CHUNK_SIZE; y++)
-			for(int x = 0; x < CHUNK_SIZE; x++) {
-				if(chunk->blocks[z][y][x])
-					chunk_generate_face(chunk, x, y, z, &buffer);
-			}
-	chunk->vert_count = arrbuf_length(&buffer, sizeof(Vertex));
-
-	chunk->chunk_vbo = ugl_create_buffer(GL_STATIC_DRAW, buffer.size, buffer.data);
-	quad_vao = ugl_create_vao(2, (VaoSpec[]){
-		{ 0, 3, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, position), 0, chunk->chunk_vbo },
-		{ 1, 2, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, texcoord), 0, chunk->chunk_vbo },
-	});
-	arrbuf_free(&buffer);
-	UGL_ASSERT();
 }
 
 void
@@ -428,4 +368,41 @@ void
 load_textures()
 {
 	assert(load_texture(&terrain, "textures/terrain.png"));
+}
+
+void
+chunk_renderer_render_chunk(unsigned int vao, unsigned int vertex_count, vec3 position)
+{
+	glUniform3fv(chunk_position_uni, 1, position);
+
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, terrain.texture);
+
+	glBindVertexArray(vao);
+	glDrawArrays(GL_TRIANGLES, 0, vertex_count);
+	glBindVertexArray(0);
+
+	glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+void
+chunk_renderer_generate_buffers(Chunk *chunk)
+{
+	ArrayBuffer buffer;
+
+	arrbuf_init(&buffer);
+	for(int z = 0; z < CHUNK_SIZE; z++)
+		for(int y = 0; y < CHUNK_SIZE; y++)
+			for(int x = 0; x < CHUNK_SIZE; x++) {
+				if(chunk->blocks[z][y][x])
+					chunk_generate_face(chunk, x, y, z, &buffer);
+			}
+	chunk->vert_count = arrbuf_length(&buffer, sizeof(Vertex));
+
+	chunk->chunk_vbo = ugl_create_buffer(GL_STATIC_DRAW, buffer.size, buffer.data);
+	chunk->chunk_vao = ugl_create_vao(2, (VaoSpec[]){
+		{ 0, 3, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, position), 0, chunk->chunk_vbo },
+		{ 1, 2, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, texcoord), 0, chunk->chunk_vbo },
+	});
+	arrbuf_free(&buffer);
 }
