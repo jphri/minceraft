@@ -3,6 +3,7 @@ project(cubegame)
 
 add_subdirectory(lib/stb)
 add_subdirectory(lib/linmath)
+add_subdirectory(lib/noise1234)
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 
@@ -25,7 +26,7 @@ add_custom_target(COPY_TEXTURES ALL
 	COMMENT "Copy textures..."
 )
 
-set(LIBRARIES linmath stb ${GLFW} ${GLEW} ${OPENGL})
+set(LIBRARIES noise1234 linmath stb ${GLFW} ${GLEW} ${OPENGL})
 if(UNIX)
 	set(LIBRARIES ${LIBRARIES} m)
 endif()
