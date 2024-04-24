@@ -28,8 +28,7 @@
 
 #define CHUNK_SIZE 16
 #define LAST_BLOCK (CHUNK_SIZE - 1)
-#define BLOCK_SCALE 0.5
-
+#define BLOCK_SCALE 1.0
 typedef struct {
 	vec3 position;
 	vec2 texcoord;
@@ -41,15 +40,15 @@ typedef struct {
 	vec3 camera_view;
 } Player;
 
-
 typedef struct {
 	unsigned int texture;
 	int w, h;
 } Texture;
 
+static bool locking;
+
 static void chunk_generate_face(Chunk *chunk, int x, int y, int z, ArrayBuffer *output);
 static void player_update(Player *player, float delta);
-
 static void get_cube_face(Texture *texture, int tex_id, vec2 min, vec2 max);
 
 static bool load_texture(Texture *texture, const char *path);
@@ -57,7 +56,10 @@ static bool load_texture(Texture *texture, const char *path);
 static void load_programs();
 static void load_buffers();
 static void load_textures();
+
 static void error_callback(int errcode, const char *msg);
+static void mouse_click_callback(GLFWwindow *window, int button, int action, int mods);
+static void keyboard_callback(GLFWwindow *window, int scan, int key, int action, int mods);
 
 static Vertex quad_data[] = {
 	{ { -1.0, -1.0,  0.0 }, { 0.0, 0.0 } },
@@ -88,11 +90,11 @@ static mat4x4 projection, view;
 static Chunk chunk;
 
 static Texture terrain;
+static Player player;
 
 int
 main()
 {
-	Player player;
 	double pre_time;
 	glfwSetErrorCallback(error_callback);
 	if(!glfwInit())
@@ -105,6 +107,8 @@ main()
 	window = glfwCreateWindow(800, 600, "hello", NULL, NULL);
 	if(!window)
 		return -2;
+	glfwSetMouseButtonCallback(window, mouse_click_callback);
+	glfwSetKeyCallback(window, keyboard_callback);
 	glfwMakeContextCurrent(window);
 	if(glewInit() != GLEW_OK)
 		return -3;
@@ -121,9 +125,9 @@ main()
 
 	player.yaw = 0.0;
 	player.pitch = 0.0;
-	player.position[0] =   0;
-	player.position[1] =   1;
-	player.position[2] = -10;
+	player.position[0] = 0;
+	player.position[1] = 0;
+	player.position[2] = 0;
 
 	glfwShowWindow(window);
 	pre_time = glfwGetTime();
@@ -212,21 +216,23 @@ player_update(Player *player, float delta)
 	double mx, my, mdx, mdy;
 	vec3 front_dir, right_dir;
 
-	glfwGetWindowSize(window, &w, &h);
-	glfwGetCursorPos(window, &mx, &my);
-	glfwSetCursorPos(window, w >> 1, h >> 1);
+	if(locking) {
+		glfwGetWindowSize(window, &w, &h);
+		glfwGetCursorPos(window, &mx, &my);
+		glfwSetCursorPos(window, w >> 1, h >> 1);
 	
-	mdx = (mx - (w >> 1)) * 0.005f;
-	mdy = (my - (h >> 1)) * 0.005f;
-	
-	player->pitch -= mdy;
-	player->yaw -= mdx;
+		mdx = (mx - (w >> 1)) * 0.005f;
+		mdy = (my - (h >> 1)) * 0.005f;
 
-	if(player->yaw < 0)          player->yaw =  2 * M_PI + player->yaw;
-	if(player->yaw > (2 * M_PI)) player->yaw -= 2 * M_PI;
+		player->pitch -= mdy;
+		player->yaw -= mdx;
 
-	if(player->pitch >  (MAX_PITCH)) player->pitch =  MAX_PITCH;
-	if(player->pitch < -(MAX_PITCH)) player->pitch = -MAX_PITCH;
+		if(player->yaw < 0)          player->yaw =  2 * M_PI + player->yaw;
+		if(player->yaw > (2 * M_PI)) player->yaw -= 2 * M_PI;
+
+		if(player->pitch >  (MAX_PITCH)) player->pitch =  MAX_PITCH;
+		if(player->pitch < -(MAX_PITCH)) player->pitch = -MAX_PITCH;
+	}
 
 	front_dir[0] = sinf(player->yaw);
 	front_dir[1] = 0.0;
@@ -250,6 +256,7 @@ player_update(Player *player, float delta)
 	front_dir[0] = front_dir[0] * cosf(player->pitch);
 	front_dir[1] = sinf(player->pitch);
 	front_dir[2] = front_dir[2] * cosf(player->pitch);
+	vec3_dup(player->camera_view, front_dir);
 	vec3_add(front_dir, player->position, front_dir);
 
 	mat4x4_look_at(view, player->position, front_dir, (vec3){ 0.0, 1.0, 0.0 });
@@ -259,68 +266,72 @@ void
 chunk_generate_face(Chunk *chunk, int x, int y, int z, ArrayBuffer *buffer)
 {
 	vec2 min, max;
-	int block = chunk->blocks[x][y][z];
+	int block = chunk->blocks[z][y][x];
 	#define INSERT_VERTEX(...) \
 		arrbuf_insert(buffer, sizeof(Vertex), &(Vertex){ __VA_ARGS__ })
 
+	float xx = x * BLOCK_SCALE;
+	float yy = y * BLOCK_SCALE;
+	float zz = z * BLOCK_SCALE;
+
 	if(z == 0 || chunk->blocks[z - 1][y][x] == 0) {
 		get_cube_face(&terrain, faces[block][BACK], min, max);
-		INSERT_VERTEX(.position = {  BLOCK_SCALE + x, -BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { min[0], max[1] } );
-		INSERT_VERTEX(.position = { -BLOCK_SCALE + x, -BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { max[0], max[1] } );
-		INSERT_VERTEX(.position = { -BLOCK_SCALE + x,  BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { max[0], min[1] } );
-		INSERT_VERTEX(.position = { -BLOCK_SCALE + x,  BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { max[0], min[1] } );
-		INSERT_VERTEX(.position = {  BLOCK_SCALE + x,  BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { min[0], min[1] } );
-		INSERT_VERTEX(.position = {  BLOCK_SCALE + x, -BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { min[0], max[1] } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  0 + yy,  0 + zz }, .texcoord = { min[0], max[1] } );
+		INSERT_VERTEX(.position = {  0 + xx,  0 + yy,  0 + zz }, .texcoord = { max[0], max[1] } );
+		INSERT_VERTEX(.position = {  0 + xx,  BLOCK_SCALE + yy,  0 + zz }, .texcoord = { max[0], min[1] } );
+		INSERT_VERTEX(.position = {  0 + xx,  BLOCK_SCALE + yy,  0 + zz }, .texcoord = { max[0], min[1] } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  BLOCK_SCALE + yy,  0 + zz }, .texcoord = { min[0], min[1] } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  0 + yy,  0 + zz }, .texcoord = { min[0], max[1] } );
 	}
 
 	if(x == LAST_BLOCK || chunk->blocks[z][y][x + 1] == 0) {
 		get_cube_face(&terrain, faces[block][RIGHT], min, max);
-		INSERT_VERTEX(.position = {  BLOCK_SCALE + x, -BLOCK_SCALE + y,  BLOCK_SCALE + z }, .texcoord = { min[0], max[1] } );
-		INSERT_VERTEX(.position = {  BLOCK_SCALE + x, -BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { max[0], max[1] } );
-		INSERT_VERTEX(.position = {  BLOCK_SCALE + x,  BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { max[0], min[1] } );
-		INSERT_VERTEX(.position = {  BLOCK_SCALE + x,  BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { max[0], min[1] } );
-		INSERT_VERTEX(.position = {  BLOCK_SCALE + x,  BLOCK_SCALE + y,  BLOCK_SCALE + z }, .texcoord = { min[0], min[1] } );
-		INSERT_VERTEX(.position = {  BLOCK_SCALE + x, -BLOCK_SCALE + y,  BLOCK_SCALE + z }, .texcoord = { min[0], max[1] } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  0 + yy,  BLOCK_SCALE + zz }, .texcoord = { min[0], max[1] } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  0 + yy,  0 + zz }, .texcoord = { max[0], max[1] } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  BLOCK_SCALE + yy,  0 + zz }, .texcoord = { max[0], min[1] } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  BLOCK_SCALE + yy,  0 + zz }, .texcoord = { max[0], min[1] } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  BLOCK_SCALE + yy,  BLOCK_SCALE + zz }, .texcoord = { min[0], min[1] } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  0 + yy,  BLOCK_SCALE + zz }, .texcoord = { min[0], max[1] } );
 	}
 
 	if(z == LAST_BLOCK || chunk->blocks[z + 1][y][x] == 0) {
 		get_cube_face(&terrain, faces[block][FRONT], min, max);
-		INSERT_VERTEX(.position = { -BLOCK_SCALE + x, -BLOCK_SCALE + y, BLOCK_SCALE + z }, .texcoord = { min[0], max[1] } );
-		INSERT_VERTEX(.position = {  BLOCK_SCALE + x, -BLOCK_SCALE + y, BLOCK_SCALE + z }, .texcoord = { max[0], max[1] } );
-		INSERT_VERTEX(.position = {  BLOCK_SCALE + x,  BLOCK_SCALE + y, BLOCK_SCALE + z }, .texcoord = { max[0], min[1] } );
-		INSERT_VERTEX(.position = {  BLOCK_SCALE + x,  BLOCK_SCALE + y, BLOCK_SCALE + z }, .texcoord = { max[0], min[1] } );
-		INSERT_VERTEX(.position = { -BLOCK_SCALE + x,  BLOCK_SCALE + y, BLOCK_SCALE + z }, .texcoord = { min[0], min[1] } );
-		INSERT_VERTEX(.position = { -BLOCK_SCALE + x, -BLOCK_SCALE + y, BLOCK_SCALE + z }, .texcoord = { min[0], max[1] } );
+		INSERT_VERTEX(.position = {  0 + xx,  0 + yy, BLOCK_SCALE + zz }, .texcoord = { min[0], max[1] } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  0 + yy, BLOCK_SCALE + zz }, .texcoord = { max[0], max[1] } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  BLOCK_SCALE + yy, BLOCK_SCALE + zz }, .texcoord = { max[0], min[1] } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  BLOCK_SCALE + yy, BLOCK_SCALE + zz }, .texcoord = { max[0], min[1] } );
+		INSERT_VERTEX(.position = {  0 + xx,  BLOCK_SCALE + yy, BLOCK_SCALE + zz }, .texcoord = { min[0], min[1] } );
+		INSERT_VERTEX(.position = {  0 + xx,  0 + yy, BLOCK_SCALE + zz }, .texcoord = { min[0], max[1] } );
 	}
 
 	if(x == 0 || chunk->blocks[z][y][x - 1] == 0) {
 		get_cube_face(&terrain, faces[block][LEFT], min, max);
-		INSERT_VERTEX(.position = { -BLOCK_SCALE + x, -BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { min[0], max[1] } );
-		INSERT_VERTEX(.position = { -BLOCK_SCALE + x, -BLOCK_SCALE + y,  BLOCK_SCALE + z }, .texcoord = { max[0], max[1] } );
-		INSERT_VERTEX(.position = { -BLOCK_SCALE + x,  BLOCK_SCALE + y,  BLOCK_SCALE + z }, .texcoord = { max[0], min[1] } );
-		INSERT_VERTEX(.position = { -BLOCK_SCALE + x,  BLOCK_SCALE + y,  BLOCK_SCALE + z }, .texcoord = { max[0], min[1] } );
-		INSERT_VERTEX(.position = { -BLOCK_SCALE + x,  BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { min[0], min[1] } );
-		INSERT_VERTEX(.position = { -BLOCK_SCALE + x, -BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { min[0], max[1] } );
+		INSERT_VERTEX(.position = {  0 + xx,  0 + yy,  0 + zz }, .texcoord = { min[0], max[1] } );
+		INSERT_VERTEX(.position = {  0 + xx,  0 + yy,  BLOCK_SCALE + zz }, .texcoord = { max[0], max[1] } );
+		INSERT_VERTEX(.position = {  0 + xx,  BLOCK_SCALE + yy,  BLOCK_SCALE + zz }, .texcoord = { max[0], min[1] } );
+		INSERT_VERTEX(.position = {  0 + xx,  BLOCK_SCALE + yy,  BLOCK_SCALE + zz }, .texcoord = { max[0], min[1] } );
+		INSERT_VERTEX(.position = {  0 + xx,  BLOCK_SCALE + yy,  0 + zz }, .texcoord = { min[0], min[1] } );
+		INSERT_VERTEX(.position = {  0 + xx,  0 + yy,  0 + zz }, .texcoord = { min[0], max[1] } );
 	}
 
 	if(y == 0 || chunk->blocks[z][y - 1][x] == 0) {
 		get_cube_face(&terrain, faces[block][BOTTOM], min, max);
-		INSERT_VERTEX(.position = { -BLOCK_SCALE + x, -BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { min[0], max[1] } );
-		INSERT_VERTEX(.position = {  BLOCK_SCALE + x, -BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { max[0], max[1] } );
-		INSERT_VERTEX(.position = {  BLOCK_SCALE + x, -BLOCK_SCALE + y,  BLOCK_SCALE + z }, .texcoord = { max[0], min[1] } );
-		INSERT_VERTEX(.position = {  BLOCK_SCALE + x, -BLOCK_SCALE + y,  BLOCK_SCALE + z }, .texcoord = { max[0], min[1] } );
-		INSERT_VERTEX(.position = { -BLOCK_SCALE + x, -BLOCK_SCALE + y,  BLOCK_SCALE + z }, .texcoord = { min[0], min[1] } );
-		INSERT_VERTEX(.position = { -BLOCK_SCALE + x, -BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { min[0], max[1] } );
+		INSERT_VERTEX(.position = {  0 + xx,  0 + yy,  0 + zz }, .texcoord = { min[0], max[1] } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  0 + yy,  0 + zz }, .texcoord = { max[0], max[1] } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  0 + yy,  BLOCK_SCALE + zz }, .texcoord = { max[0], min[1] } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  0 + yy,  BLOCK_SCALE + zz }, .texcoord = { max[0], min[1] } );
+		INSERT_VERTEX(.position = {  0 + xx,  0 + yy,  BLOCK_SCALE + zz }, .texcoord = { min[0], min[1] } );
+		INSERT_VERTEX(.position = {  0 + xx,  0 + yy,  0 + zz }, .texcoord = { min[0], max[1] } );
 	}
 
 	if(y == LAST_BLOCK || chunk->blocks[z][y + 1][x] == 0) {
 		get_cube_face(&terrain, faces[block][TOP], min, max);
-		INSERT_VERTEX(.position = {  BLOCK_SCALE + x,  BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { min[0], max[1] } );
-		INSERT_VERTEX(.position = { -BLOCK_SCALE + x,  BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { max[0], max[1] } );
-		INSERT_VERTEX(.position = { -BLOCK_SCALE + x,  BLOCK_SCALE + y,  BLOCK_SCALE + z }, .texcoord = { max[0], min[1] } );
-		INSERT_VERTEX(.position = { -BLOCK_SCALE + x,  BLOCK_SCALE + y,  BLOCK_SCALE + z }, .texcoord = { max[0], min[1] } );
-		INSERT_VERTEX(.position = {  BLOCK_SCALE + x,  BLOCK_SCALE + y,  BLOCK_SCALE + z }, .texcoord = { min[0], min[1] } );
-		INSERT_VERTEX(.position = {  BLOCK_SCALE + x,  BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { min[0], max[1] } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  BLOCK_SCALE + yy,  0 + zz }, .texcoord = { min[0], max[1] } );
+		INSERT_VERTEX(.position = {  0 + xx,  BLOCK_SCALE + yy,  0 + zz }, .texcoord = { max[0], max[1] } );
+		INSERT_VERTEX(.position = {  0 + xx,  BLOCK_SCALE + yy,  BLOCK_SCALE + zz }, .texcoord = { max[0], min[1] } );
+		INSERT_VERTEX(.position = {  0 + xx,  BLOCK_SCALE + yy,  BLOCK_SCALE + zz }, .texcoord = { max[0], min[1] } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  BLOCK_SCALE + yy,  BLOCK_SCALE + zz }, .texcoord = { min[0], min[1] } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  BLOCK_SCALE + yy,  0 + zz }, .texcoord = { min[0], max[1] } );
 	}
 }
 
@@ -405,4 +416,51 @@ chunk_renderer_generate_buffers(Chunk *chunk)
 		{ 1, 2, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, texcoord), 0, chunk->chunk_vbo },
 	});
 	arrbuf_free(&buffer);
+}
+
+void
+mouse_click_callback(GLFWwindow *window, int button, int action, int mods)
+{
+	if(action == GLFW_RELEASE)
+		return;
+
+	if(!locking) {
+		int w, h;
+		glfwGetWindowSize(window, &w, &h);
+		glfwSetCursorPos(window, w >> 1, h >> 1);
+		locking = true;
+		return;
+	}
+
+	if(button == 0) {
+		RaycastWorld rw = world_begin_raycast(player.position, player.camera_view, 5.0);
+		while(world_raycast(&rw)) {
+			if(rw.block > 0) {
+				world_set_block(rw.position[0], rw.position[1], rw.position[2], BLOCK_NULL);
+				break;
+			}
+		}
+	} else if(button == 1) {
+		vec3 dir, block;
+		RaycastWorld rw = world_begin_raycast(player.position, player.camera_view, 5.0);
+		while(world_raycast(&rw)) {
+			if(rw.block > 0) {
+				block_face_to_dir(rw.face, dir);
+				vec3_add(block, rw.position, dir);
+
+				if(world_get_block(block[0], block[1], block[2]) == BLOCK_NULL) {
+					world_set_block(block[0], block[1], block[2], BLOCK_DIRT);
+				}
+				break;
+			}
+		}
+	}
+}
+
+void
+keyboard_callback(GLFWwindow *window, int key, int scan, int action, int mods)
+{
+	if(key == GLFW_KEY_ESCAPE) {
+		locking = false;
+	}
 }
