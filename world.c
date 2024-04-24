@@ -20,6 +20,7 @@ static Chunk *find_free_chunk();
 
 static BlockProperties bprop[] = {
 	[BLOCK_NULL]  = { .is_transparent = true },
+	[BLOCK_GLASS] = { .is_transparent = true }
 };
 
 static int running;

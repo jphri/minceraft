@@ -77,6 +77,18 @@ static int faces[LAST_BLOCK][6] = {
 	},
 	[BLOCK_DIRT] = {
 		0, 0, 0, 0, 0, 0
+	},
+	[BLOCK_STONE] = {
+		3, 3, 3, 3, 3, 3
+	},
+	[BLOCK_SAND] = {
+		4, 4, 4, 4, 4, 4
+	},
+	[BLOCK_PLANKS] = {
+		5, 5, 5, 5, 5, 5
+	},
+	[BLOCK_GLASS] = {
+		6, 6, 6, 6, 6, 6
 	}
 };
 
