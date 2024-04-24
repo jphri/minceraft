@@ -18,6 +18,10 @@ static void *chunk_worker_func(void *);
 static Chunk *find_chunk(int x, int y, int z);
 static Chunk *find_free_chunk();
 
+static BlockProperties bprop[] = {
+	[BLOCK_NULL]  = { .is_transparent = true },
+};
+
 static int running;
 static ArrayBuffer chunk_pages;
 
@@ -175,7 +179,7 @@ chunk_randomize(Chunk *chunk)
 	for(int y = 0; y < CHUNK_SIZE; y++)
 	for(int x = 0; x < CHUNK_SIZE; x++) {
 		if(rand() & 1) {
-			chunk->blocks[x][y][z] = rand() % (BLOCK_DIRT - BLOCK_GRASS) + BLOCK_GRASS;
+			chunk->blocks[x][y][z] = rand() % (BLOCK_LAST - BLOCK_GRASS) + BLOCK_GRASS;
 		} else {
 			chunk->blocks[x][y][z] = 0;
 		}
@@ -356,4 +360,10 @@ block_face_to_dir(Direction dir, vec3 out)
 	case FRONT:  vec3_dup(out, (vec3){  0.0,  0.0,  1.0 }); break;
 	case BACK:   vec3_dup(out, (vec3){  0.0,  0.0, -1.0 }); break;
 	}
+}
+
+const BlockProperties *
+block_properties(Block b)
+{
+	return &bprop[b];
 }
