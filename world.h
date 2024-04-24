@@ -2,12 +2,18 @@
 #define WORLD_H
 
 #define CHUNK_SIZE 16
+
 #include "linmath.h"
+#include <stdbool.h>
 
 typedef enum {
 	BLOCK_NULL,
 	BLOCK_GRASS,
 	BLOCK_DIRT,
+	BLOCK_STONE,
+	BLOCK_SAND,
+	BLOCK_PLANKS,
+	BLOCK_GLASS,
 	BLOCK_LAST,
 	BLOCK_UNLOADED = -1
 } Block;
@@ -42,6 +48,10 @@ struct RaycastWorld {
 	Direction face;
 };
 
+typedef struct {
+	bool is_transparent;
+} BlockProperties;
+
 void world_init();
 void world_terminate();
 void world_render();
@@ -56,5 +66,6 @@ RaycastWorld world_begin_raycast(vec3 position, vec3 direction, float max_distan
 int          world_raycast(RaycastWorld *rw);
 
 void block_face_to_dir(Direction dir, vec3 out);
+const BlockProperties *block_properties(Block block);
 
 #endif

@@ -77,6 +77,18 @@ static int faces[LAST_BLOCK][6] = {
 	},
 	[BLOCK_DIRT] = {
 		0, 0, 0, 0, 0, 0
+	},
+	[BLOCK_STONE] = {
+		3, 3, 3, 3, 3, 3
+	},
+	[BLOCK_SAND] = {
+		4, 4, 4, 4, 4, 4
+	},
+	[BLOCK_PLANKS] = {
+		5, 5, 5, 5, 5, 5
+	},
+	[BLOCK_GLASS] = {
+		6, 6, 6, 6, 6, 6
 	}
 };
 
@@ -144,6 +156,7 @@ main()
 
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		glEnable(GL_DEPTH_TEST);
+		glEnable(GL_CULL_FACE);
 		
 		glUseProgram(chunk_program);
 		glUniformMatrix4fv(projection_uni, 1, GL_FALSE, &projection[0][0]);
@@ -274,7 +287,7 @@ chunk_generate_face(Chunk *chunk, int x, int y, int z, ArrayBuffer *buffer)
 	float yy = y * BLOCK_SCALE;
 	float zz = z * BLOCK_SCALE;
 
-	if(z == 0 || chunk->blocks[z - 1][y][x] == 0) {
+	if(z == 0 || block_properties(chunk->blocks[z - 1][y][x])->is_transparent) {
 		get_cube_face(&terrain, faces[block][BACK], min, max);
 		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  0 + yy,  0 + zz }, .texcoord = { min[0], max[1] } );
 		INSERT_VERTEX(.position = {  0 + xx,  0 + yy,  0 + zz }, .texcoord = { max[0], max[1] } );
@@ -284,7 +297,7 @@ chunk_generate_face(Chunk *chunk, int x, int y, int z, ArrayBuffer *buffer)
 		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  0 + yy,  0 + zz }, .texcoord = { min[0], max[1] } );
 	}
 
-	if(x == LAST_BLOCK || chunk->blocks[z][y][x + 1] == 0) {
+	if(x == LAST_BLOCK || block_properties(chunk->blocks[z][y][x + 1])->is_transparent) {
 		get_cube_face(&terrain, faces[block][RIGHT], min, max);
 		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  0 + yy,  BLOCK_SCALE + zz }, .texcoord = { min[0], max[1] } );
 		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  0 + yy,  0 + zz }, .texcoord = { max[0], max[1] } );
@@ -294,7 +307,7 @@ chunk_generate_face(Chunk *chunk, int x, int y, int z, ArrayBuffer *buffer)
 		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  0 + yy,  BLOCK_SCALE + zz }, .texcoord = { min[0], max[1] } );
 	}
 
-	if(z == LAST_BLOCK || chunk->blocks[z + 1][y][x] == 0) {
+	if(z == LAST_BLOCK || block_properties(chunk->blocks[z + 1][y][x])->is_transparent) {
 		get_cube_face(&terrain, faces[block][FRONT], min, max);
 		INSERT_VERTEX(.position = {  0 + xx,  0 + yy, BLOCK_SCALE + zz }, .texcoord = { min[0], max[1] } );
 		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  0 + yy, BLOCK_SCALE + zz }, .texcoord = { max[0], max[1] } );
@@ -304,7 +317,7 @@ chunk_generate_face(Chunk *chunk, int x, int y, int z, ArrayBuffer *buffer)
 		INSERT_VERTEX(.position = {  0 + xx,  0 + yy, BLOCK_SCALE + zz }, .texcoord = { min[0], max[1] } );
 	}
 
-	if(x == 0 || chunk->blocks[z][y][x - 1] == 0) {
+	if(x == 0 || block_properties(chunk->blocks[z][y][x - 1])->is_transparent) {
 		get_cube_face(&terrain, faces[block][LEFT], min, max);
 		INSERT_VERTEX(.position = {  0 + xx,  0 + yy,  0 + zz }, .texcoord = { min[0], max[1] } );
 		INSERT_VERTEX(.position = {  0 + xx,  0 + yy,  BLOCK_SCALE + zz }, .texcoord = { max[0], max[1] } );
@@ -314,7 +327,7 @@ chunk_generate_face(Chunk *chunk, int x, int y, int z, ArrayBuffer *buffer)
 		INSERT_VERTEX(.position = {  0 + xx,  0 + yy,  0 + zz }, .texcoord = { min[0], max[1] } );
 	}
 
-	if(y == 0 || chunk->blocks[z][y - 1][x] == 0) {
+	if(y == 0 || block_properties(chunk->blocks[z][y - 1][x])->is_transparent) {
 		get_cube_face(&terrain, faces[block][BOTTOM], min, max);
 		INSERT_VERTEX(.position = {  0 + xx,  0 + yy,  0 + zz }, .texcoord = { min[0], max[1] } );
 		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  0 + yy,  0 + zz }, .texcoord = { max[0], max[1] } );
@@ -324,7 +337,7 @@ chunk_generate_face(Chunk *chunk, int x, int y, int z, ArrayBuffer *buffer)
 		INSERT_VERTEX(.position = {  0 + xx,  0 + yy,  0 + zz }, .texcoord = { min[0], max[1] } );
 	}
 
-	if(y == LAST_BLOCK || chunk->blocks[z][y + 1][x] == 0) {
+	if(y == LAST_BLOCK || block_properties(chunk->blocks[z][y + 1][x])->is_transparent) {
 		get_cube_face(&terrain, faces[block][TOP], min, max);
 		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  BLOCK_SCALE + yy,  0 + zz }, .texcoord = { min[0], max[1] } );
 		INSERT_VERTEX(.position = {  0 + xx,  BLOCK_SCALE + yy,  0 + zz }, .texcoord = { max[0], max[1] } );
