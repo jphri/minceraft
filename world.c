@@ -304,9 +304,9 @@ world_raycast(RaycastWorld *rw)
 					rw->position[0] += rw->step[0];
 					rw->tmax[0] += rw->tdelta[0];
 					if(rw->step[0] < 0)
-						rw->face = LEFT;
-					else
 						rw->face = RIGHT;
+					else
+						rw->face = LEFT;
 				} else {
 					if(rw->tmax[2] > rw->max_distance)
 						return 0;
