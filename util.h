@@ -7,6 +7,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define UNUSED(x) (void)x
+
 typedef struct ArrayBuffer ArrayBuffer;
 typedef struct StrView StrView;
 typedef struct Span Span;

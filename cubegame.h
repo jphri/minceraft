@@ -1,7 +1,7 @@
 #ifndef CUBEGAME_H
 #define CUBEGAME_H
 
-#include "linmath.h"
+#include <linmath.h>
 #include "world.h"
 
 void chunk_renderer_generate_buffers(Chunk *chunk);
