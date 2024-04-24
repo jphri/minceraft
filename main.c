@@ -40,11 +40,12 @@ typedef struct {
 	vec3 camera_view;
 } Player;
 
-
 typedef struct {
 	unsigned int texture;
 	int w, h;
 } Texture;
+
+static bool locking;
 
 static void chunk_generate_face(Chunk *chunk, int x, int y, int z, ArrayBuffer *output);
 static void player_update(Player *player, float delta);
@@ -56,7 +57,10 @@ static bool load_texture(Texture *texture, const char *path);
 static void load_programs();
 static void load_buffers();
 static void load_textures();
+
 static void error_callback(int errcode, const char *msg);
+static void mouse_click_callback(GLFWwindow *window, int button, int action, int mods);
+static void keyboard_callback(GLFWwindow *window, int scan, int key, int action, int mods);
 
 static Vertex quad_data[] = {
 	{ { -1.0, -1.0,  0.0 }, { 0.0, 0.0 } },
@@ -104,6 +108,8 @@ main()
 	window = glfwCreateWindow(800, 600, "hello", NULL, NULL);
 	if(!window)
 		return -2;
+	glfwSetMouseButtonCallback(window, mouse_click_callback);
+	glfwSetKeyCallback(window, keyboard_callback);
 	glfwMakeContextCurrent(window);
 	if(glewInit() != GLEW_OK)
 		return -3;
@@ -211,21 +217,23 @@ player_update(Player *player, float delta)
 	double mx, my, mdx, mdy;
 	vec3 front_dir, right_dir;
 
-	glfwGetWindowSize(window, &w, &h);
-	glfwGetCursorPos(window, &mx, &my);
-	glfwSetCursorPos(window, w >> 1, h >> 1);
+	if(locking) {
+		glfwGetWindowSize(window, &w, &h);
+		glfwGetCursorPos(window, &mx, &my);
+		glfwSetCursorPos(window, w >> 1, h >> 1);
 	
-	mdx = (mx - (w >> 1)) * 0.005f;
-	mdy = (my - (h >> 1)) * 0.005f;
-	
-	player->pitch -= mdy;
-	player->yaw -= mdx;
+		mdx = (mx - (w >> 1)) * 0.005f;
+		mdy = (my - (h >> 1)) * 0.005f;
 
-	if(player->yaw < 0)          player->yaw =  2 * M_PI + player->yaw;
-	if(player->yaw > (2 * M_PI)) player->yaw -= 2 * M_PI;
+		player->pitch -= mdy;
+		player->yaw -= mdx;
 
-	if(player->pitch >  (MAX_PITCH)) player->pitch =  MAX_PITCH;
-	if(player->pitch < -(MAX_PITCH)) player->pitch = -MAX_PITCH;
+		if(player->yaw < 0)          player->yaw =  2 * M_PI + player->yaw;
+		if(player->yaw > (2 * M_PI)) player->yaw -= 2 * M_PI;
+
+		if(player->pitch >  (MAX_PITCH)) player->pitch =  MAX_PITCH;
+		if(player->pitch < -(MAX_PITCH)) player->pitch = -MAX_PITCH;
+	}
 
 	front_dir[0] = sinf(player->yaw);
 	front_dir[1] = 0.0;
@@ -408,4 +416,27 @@ chunk_renderer_generate_buffers(Chunk *chunk)
 		{ 1, 2, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, texcoord), 0, chunk->chunk_vbo },
 	});
 	arrbuf_free(&buffer);
+}
+
+void
+mouse_click_callback(GLFWwindow *window, int button, int action, int mods)
+{
+	if(action == GLFW_RELEASE)
+		return;
+
+	if(!locking) {
+		int w, h;
+		glfwGetWindowSize(window, &w, &h);
+		glfwSetCursorPos(window, w >> 1, h >> 1);
+		locking = true;
+	}
+
+}
+
+void
+keyboard_callback(GLFWwindow *window, int key, int scan, int action, int mods)
+{
+	if(key == GLFW_KEY_ESCAPE) {
+		locking = false;
+	}
 }
