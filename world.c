@@ -223,9 +223,9 @@ find_free_chunk()
 Block
 world_get_block(int x, int y, int z)
 {
-	int chunk_x = (x / CHUNK_SIZE) * CHUNK_SIZE;
-	int chunk_y = (y / CHUNK_SIZE) * CHUNK_SIZE;
-	int chunk_z = (z / CHUNK_SIZE) * CHUNK_SIZE;
+	int chunk_x = x & ~(CHUNK_SIZE - 1);
+	int chunk_y = y & ~(CHUNK_SIZE - 1);
+	int chunk_z = z & ~(CHUNK_SIZE - 1);
 
 	Chunk *ch = find_chunk(chunk_x, chunk_y, chunk_z);
 	if(!ch)
@@ -241,9 +241,9 @@ world_get_block(int x, int y, int z)
 void
 world_set_block(int x, int y, int z, Block block)
 {
-	int chunk_x = (x / CHUNK_SIZE) * CHUNK_SIZE;
-	int chunk_y = (y / CHUNK_SIZE) * CHUNK_SIZE;
-	int chunk_z = (z / CHUNK_SIZE) * CHUNK_SIZE;
+	int chunk_x = x & ~(CHUNK_SIZE - 1);
+	int chunk_y = y & ~(CHUNK_SIZE - 1);
+	int chunk_z = z & ~(CHUNK_SIZE - 1);
 
 	Chunk *ch = find_chunk(chunk_x, chunk_y, chunk_z);
 	if(!ch)
