@@ -28,8 +28,7 @@
 
 #define CHUNK_SIZE 16
 #define LAST_BLOCK (CHUNK_SIZE - 1)
-#define BLOCK_SCALE 0.5
-
+#define BLOCK_SCALE 1.0
 typedef struct {
 	vec3 position;
 	vec2 texcoord;
@@ -263,64 +262,68 @@ chunk_generate_face(Chunk *chunk, int x, int y, int z, ArrayBuffer *buffer)
 	#define INSERT_VERTEX(...) \
 		arrbuf_insert(buffer, sizeof(Vertex), &(Vertex){ __VA_ARGS__ })
 
+	float xx = x * BLOCK_SCALE;
+	float yy = y * BLOCK_SCALE;
+	float zz = z * BLOCK_SCALE;
+
 	if(z == 0 || chunk->blocks[z - 1][y][x] == 0) {
 		get_cube_face(&terrain, faces[block][BACK], min, max);
-		INSERT_VERTEX(.position = {  BLOCK_SCALE + x, -BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { min[0], max[1] } );
-		INSERT_VERTEX(.position = { -BLOCK_SCALE + x, -BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { max[0], max[1] } );
-		INSERT_VERTEX(.position = { -BLOCK_SCALE + x,  BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { max[0], min[1] } );
-		INSERT_VERTEX(.position = { -BLOCK_SCALE + x,  BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { max[0], min[1] } );
-		INSERT_VERTEX(.position = {  BLOCK_SCALE + x,  BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { min[0], min[1] } );
-		INSERT_VERTEX(.position = {  BLOCK_SCALE + x, -BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { min[0], max[1] } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  0 + yy,  0 + zz }, .texcoord = { min[0], max[1] } );
+		INSERT_VERTEX(.position = {  0 + xx,  0 + yy,  0 + zz }, .texcoord = { max[0], max[1] } );
+		INSERT_VERTEX(.position = {  0 + xx,  BLOCK_SCALE + yy,  0 + zz }, .texcoord = { max[0], min[1] } );
+		INSERT_VERTEX(.position = {  0 + xx,  BLOCK_SCALE + yy,  0 + zz }, .texcoord = { max[0], min[1] } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  BLOCK_SCALE + yy,  0 + zz }, .texcoord = { min[0], min[1] } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  0 + yy,  0 + zz }, .texcoord = { min[0], max[1] } );
 	}
 
 	if(x == LAST_BLOCK || chunk->blocks[z][y][x + 1] == 0) {
 		get_cube_face(&terrain, faces[block][RIGHT], min, max);
-		INSERT_VERTEX(.position = {  BLOCK_SCALE + x, -BLOCK_SCALE + y,  BLOCK_SCALE + z }, .texcoord = { min[0], max[1] } );
-		INSERT_VERTEX(.position = {  BLOCK_SCALE + x, -BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { max[0], max[1] } );
-		INSERT_VERTEX(.position = {  BLOCK_SCALE + x,  BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { max[0], min[1] } );
-		INSERT_VERTEX(.position = {  BLOCK_SCALE + x,  BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { max[0], min[1] } );
-		INSERT_VERTEX(.position = {  BLOCK_SCALE + x,  BLOCK_SCALE + y,  BLOCK_SCALE + z }, .texcoord = { min[0], min[1] } );
-		INSERT_VERTEX(.position = {  BLOCK_SCALE + x, -BLOCK_SCALE + y,  BLOCK_SCALE + z }, .texcoord = { min[0], max[1] } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  0 + yy,  BLOCK_SCALE + zz }, .texcoord = { min[0], max[1] } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  0 + yy,  0 + zz }, .texcoord = { max[0], max[1] } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  BLOCK_SCALE + yy,  0 + zz }, .texcoord = { max[0], min[1] } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  BLOCK_SCALE + yy,  0 + zz }, .texcoord = { max[0], min[1] } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  BLOCK_SCALE + yy,  BLOCK_SCALE + zz }, .texcoord = { min[0], min[1] } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  0 + yy,  BLOCK_SCALE + zz }, .texcoord = { min[0], max[1] } );
 	}
 
 	if(z == LAST_BLOCK || chunk->blocks[z + 1][y][x] == 0) {
 		get_cube_face(&terrain, faces[block][FRONT], min, max);
-		INSERT_VERTEX(.position = { -BLOCK_SCALE + x, -BLOCK_SCALE + y, BLOCK_SCALE + z }, .texcoord = { min[0], max[1] } );
-		INSERT_VERTEX(.position = {  BLOCK_SCALE + x, -BLOCK_SCALE + y, BLOCK_SCALE + z }, .texcoord = { max[0], max[1] } );
-		INSERT_VERTEX(.position = {  BLOCK_SCALE + x,  BLOCK_SCALE + y, BLOCK_SCALE + z }, .texcoord = { max[0], min[1] } );
-		INSERT_VERTEX(.position = {  BLOCK_SCALE + x,  BLOCK_SCALE + y, BLOCK_SCALE + z }, .texcoord = { max[0], min[1] } );
-		INSERT_VERTEX(.position = { -BLOCK_SCALE + x,  BLOCK_SCALE + y, BLOCK_SCALE + z }, .texcoord = { min[0], min[1] } );
-		INSERT_VERTEX(.position = { -BLOCK_SCALE + x, -BLOCK_SCALE + y, BLOCK_SCALE + z }, .texcoord = { min[0], max[1] } );
+		INSERT_VERTEX(.position = {  0 + xx,  0 + yy, BLOCK_SCALE + zz }, .texcoord = { min[0], max[1] } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  0 + yy, BLOCK_SCALE + zz }, .texcoord = { max[0], max[1] } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  BLOCK_SCALE + yy, BLOCK_SCALE + zz }, .texcoord = { max[0], min[1] } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  BLOCK_SCALE + yy, BLOCK_SCALE + zz }, .texcoord = { max[0], min[1] } );
+		INSERT_VERTEX(.position = {  0 + xx,  BLOCK_SCALE + yy, BLOCK_SCALE + zz }, .texcoord = { min[0], min[1] } );
+		INSERT_VERTEX(.position = {  0 + xx,  0 + yy, BLOCK_SCALE + zz }, .texcoord = { min[0], max[1] } );
 	}
 
 	if(x == 0 || chunk->blocks[z][y][x - 1] == 0) {
 		get_cube_face(&terrain, faces[block][LEFT], min, max);
-		INSERT_VERTEX(.position = { -BLOCK_SCALE + x, -BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { min[0], max[1] } );
-		INSERT_VERTEX(.position = { -BLOCK_SCALE + x, -BLOCK_SCALE + y,  BLOCK_SCALE + z }, .texcoord = { max[0], max[1] } );
-		INSERT_VERTEX(.position = { -BLOCK_SCALE + x,  BLOCK_SCALE + y,  BLOCK_SCALE + z }, .texcoord = { max[0], min[1] } );
-		INSERT_VERTEX(.position = { -BLOCK_SCALE + x,  BLOCK_SCALE + y,  BLOCK_SCALE + z }, .texcoord = { max[0], min[1] } );
-		INSERT_VERTEX(.position = { -BLOCK_SCALE + x,  BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { min[0], min[1] } );
-		INSERT_VERTEX(.position = { -BLOCK_SCALE + x, -BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { min[0], max[1] } );
+		INSERT_VERTEX(.position = {  0 + xx,  0 + yy,  0 + zz }, .texcoord = { min[0], max[1] } );
+		INSERT_VERTEX(.position = {  0 + xx,  0 + yy,  BLOCK_SCALE + zz }, .texcoord = { max[0], max[1] } );
+		INSERT_VERTEX(.position = {  0 + xx,  BLOCK_SCALE + yy,  BLOCK_SCALE + zz }, .texcoord = { max[0], min[1] } );
+		INSERT_VERTEX(.position = {  0 + xx,  BLOCK_SCALE + yy,  BLOCK_SCALE + zz }, .texcoord = { max[0], min[1] } );
+		INSERT_VERTEX(.position = {  0 + xx,  BLOCK_SCALE + yy,  0 + zz }, .texcoord = { min[0], min[1] } );
+		INSERT_VERTEX(.position = {  0 + xx,  0 + yy,  0 + zz }, .texcoord = { min[0], max[1] } );
 	}
 
 	if(y == 0 || chunk->blocks[z][y - 1][x] == 0) {
 		get_cube_face(&terrain, faces[block][BOTTOM], min, max);
-		INSERT_VERTEX(.position = { -BLOCK_SCALE + x, -BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { min[0], max[1] } );
-		INSERT_VERTEX(.position = {  BLOCK_SCALE + x, -BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { max[0], max[1] } );
-		INSERT_VERTEX(.position = {  BLOCK_SCALE + x, -BLOCK_SCALE + y,  BLOCK_SCALE + z }, .texcoord = { max[0], min[1] } );
-		INSERT_VERTEX(.position = {  BLOCK_SCALE + x, -BLOCK_SCALE + y,  BLOCK_SCALE + z }, .texcoord = { max[0], min[1] } );
-		INSERT_VERTEX(.position = { -BLOCK_SCALE + x, -BLOCK_SCALE + y,  BLOCK_SCALE + z }, .texcoord = { min[0], min[1] } );
-		INSERT_VERTEX(.position = { -BLOCK_SCALE + x, -BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { min[0], max[1] } );
+		INSERT_VERTEX(.position = {  0 + xx,  0 + yy,  0 + zz }, .texcoord = { min[0], max[1] } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  0 + yy,  0 + zz }, .texcoord = { max[0], max[1] } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  0 + yy,  BLOCK_SCALE + zz }, .texcoord = { max[0], min[1] } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  0 + yy,  BLOCK_SCALE + zz }, .texcoord = { max[0], min[1] } );
+		INSERT_VERTEX(.position = {  0 + xx,  0 + yy,  BLOCK_SCALE + zz }, .texcoord = { min[0], min[1] } );
+		INSERT_VERTEX(.position = {  0 + xx,  0 + yy,  0 + zz }, .texcoord = { min[0], max[1] } );
 	}
 
 	if(y == LAST_BLOCK || chunk->blocks[z][y + 1][x] == 0) {
 		get_cube_face(&terrain, faces[block][TOP], min, max);
-		INSERT_VERTEX(.position = {  BLOCK_SCALE + x,  BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { min[0], max[1] } );
-		INSERT_VERTEX(.position = { -BLOCK_SCALE + x,  BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { max[0], max[1] } );
-		INSERT_VERTEX(.position = { -BLOCK_SCALE + x,  BLOCK_SCALE + y,  BLOCK_SCALE + z }, .texcoord = { max[0], min[1] } );
-		INSERT_VERTEX(.position = { -BLOCK_SCALE + x,  BLOCK_SCALE + y,  BLOCK_SCALE + z }, .texcoord = { max[0], min[1] } );
-		INSERT_VERTEX(.position = {  BLOCK_SCALE + x,  BLOCK_SCALE + y,  BLOCK_SCALE + z }, .texcoord = { min[0], min[1] } );
-		INSERT_VERTEX(.position = {  BLOCK_SCALE + x,  BLOCK_SCALE + y, -BLOCK_SCALE + z }, .texcoord = { min[0], max[1] } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  BLOCK_SCALE + yy,  0 + zz }, .texcoord = { min[0], max[1] } );
+		INSERT_VERTEX(.position = {  0 + xx,  BLOCK_SCALE + yy,  0 + zz }, .texcoord = { max[0], max[1] } );
+		INSERT_VERTEX(.position = {  0 + xx,  BLOCK_SCALE + yy,  BLOCK_SCALE + zz }, .texcoord = { max[0], min[1] } );
+		INSERT_VERTEX(.position = {  0 + xx,  BLOCK_SCALE + yy,  BLOCK_SCALE + zz }, .texcoord = { max[0], min[1] } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  BLOCK_SCALE + yy,  BLOCK_SCALE + zz }, .texcoord = { min[0], min[1] } );
+		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  BLOCK_SCALE + yy,  0 + zz }, .texcoord = { min[0], max[1] } );
 	}
 }
 
