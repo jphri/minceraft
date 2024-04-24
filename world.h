@@ -3,7 +3,7 @@
 
 #define CHUNK_SIZE 16
 
-#include "linmath.h"
+#include <linmath.h>
 #include <stdbool.h>
 
 typedef enum {

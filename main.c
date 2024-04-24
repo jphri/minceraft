@@ -12,7 +12,7 @@
 #include "linmath.h"
 #include "world.h"
 
-#include "stb_image.h"
+#include <stb_image.h>
 
 #ifndef M_PI
 #define M_PI 3.1415926535
