@@ -258,7 +258,7 @@ void
 chunk_generate_face(Chunk *chunk, int x, int y, int z, ArrayBuffer *buffer)
 {
 	vec2 min, max;
-	int block = chunk->blocks[x][y][z];
+	int block = chunk->blocks[z][y][x];
 	#define INSERT_VERTEX(...) \
 		arrbuf_insert(buffer, sizeof(Vertex), &(Vertex){ __VA_ARGS__ })
 
