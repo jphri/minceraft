@@ -11,6 +11,20 @@
 #define LINMATH_H_FUNC static inline
 #endif
 
+LINMATH_H_FUNC float fmoduf(float f, float m)
+{
+	return fmodf(fmodf(f, m) + m, m);
+}
+
+/* df = the "direction" of next int */
+LINMATH_H_FUNC float fnextintf(float f, float df)
+{
+	if(df < 0)
+		return fnextintf(-f, -df);
+	f = fmoduf(f, 1);
+	return (1 - f) / df;
+}
+
 #define LINMATH_H_DEFINE_VEC(n) \
 typedef float vec##n[n]; \
 LINMATH_H_FUNC void vec##n##_add(vec##n r, vec##n const a, vec##n const b) \
@@ -31,6 +45,18 @@ LINMATH_H_FUNC void vec##n##_sub(vec##n r, vec##n const a, vec##n const b) \
 	for(i=0; i<n; ++i) \
 		r[i] = a[i] - b[i]; \
 } \
+LINMATH_H_FUNC void vec##n##_mul(vec##n r, vec##n const a, vec##n const b) \
+{\
+	int i; \
+	for(i=0; i<n; ++i) \
+		r[i] = a[i] * b[i]; \
+}\
+LINMATH_H_FUNC void vec##n##_div(vec##n r, vec##n const a, vec##n const b) \
+{\
+	int i; \
+	for(i=0; i<n; ++i) \
+		r[i] = a[i] / b[i]; \
+}\
 LINMATH_H_FUNC void vec##n##_scale(vec##n r, vec##n const v, float const s) \
 { \
 	int i; \
@@ -71,7 +97,26 @@ LINMATH_H_FUNC void vec##n##_dup(vec##n r, vec##n const src) \
 	int i; \
 	for(i=0; i<n; ++i) \
 		r[i] = src[i]; \
+}\
+LINMATH_H_FUNC void vec##n##_sign(vec##n r, vec##n const src) \
+{\
+	int i; \
+	for(i=0; i<n; ++i) \
+		r[i] = copysignf(1.0, src[i]); \
+}\
+LINMATH_H_FUNC void vec##n##_nextint(vec##n r, vec##n const v, vec##n const dv) \
+{\
+	int i; \
+	for(i=0; i<n; ++i) \
+		r[i] = fnextintf(v[i], dv[i]);\
+}\
+LINMATH_H_FUNC void vec##n##_floor(vec##n r, vec##n const v) \
+{\
+	int i; \
+	for(i=0; i<n; ++i) \
+		r[i] = floorf(v[i]);\
 }
+
 
 LINMATH_H_DEFINE_VEC(2)
 LINMATH_H_DEFINE_VEC(3)

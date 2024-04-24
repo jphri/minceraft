@@ -49,7 +49,6 @@ static bool locking;
 
 static void chunk_generate_face(Chunk *chunk, int x, int y, int z, ArrayBuffer *output);
 static void player_update(Player *player, float delta);
-
 static void get_cube_face(Texture *texture, int tex_id, vec2 min, vec2 max);
 
 static bool load_texture(Texture *texture, const char *path);
@@ -91,11 +90,11 @@ static mat4x4 projection, view;
 static Chunk chunk;
 
 static Texture terrain;
+static Player player;
 
 int
 main()
 {
-	Player player;
 	double pre_time;
 	glfwSetErrorCallback(error_callback);
 	if(!glfwInit())
@@ -126,9 +125,9 @@ main()
 
 	player.yaw = 0.0;
 	player.pitch = 0.0;
-	player.position[0] =   0;
-	player.position[1] =   1;
-	player.position[2] = -10;
+	player.position[0] = 0;
+	player.position[1] = 0;
+	player.position[2] = 0;
 
 	glfwShowWindow(window);
 	pre_time = glfwGetTime();
@@ -257,6 +256,7 @@ player_update(Player *player, float delta)
 	front_dir[0] = front_dir[0] * cosf(player->pitch);
 	front_dir[1] = sinf(player->pitch);
 	front_dir[2] = front_dir[2] * cosf(player->pitch);
+	vec3_dup(player->camera_view, front_dir);
 	vec3_add(front_dir, player->position, front_dir);
 
 	mat4x4_look_at(view, player->position, front_dir, (vec3){ 0.0, 1.0, 0.0 });
@@ -429,8 +429,18 @@ mouse_click_callback(GLFWwindow *window, int button, int action, int mods)
 		glfwGetWindowSize(window, &w, &h);
 		glfwSetCursorPos(window, w >> 1, h >> 1);
 		locking = true;
+		return;
 	}
 
+	if(button == 0) {
+		RaycastWorld rw = world_begin_raycast(player.position, player.camera_view, 5.0);
+		while(world_raycast(&rw)) {
+			if(rw.block > 0) {
+				world_set_block(rw.position[0], rw.position[1], rw.position[2], BLOCK_NULL);
+				break;
+			}
+		}
+	}
 }
 
 void
