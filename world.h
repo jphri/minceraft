@@ -55,5 +55,6 @@ void  world_set_block(int x, int y, int z, Block block);
 RaycastWorld world_begin_raycast(vec3 position, vec3 direction, float max_distance);
 int          world_raycast(RaycastWorld *rw);
 
+void block_face_to_dir(Direction dir, vec3 out);
 
 #endif

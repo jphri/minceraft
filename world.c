@@ -344,3 +344,16 @@ world_raycast(RaycastWorld *rw)
 		}
 	}
 }
+
+void
+block_face_to_dir(Direction dir, vec3 out)
+{
+	switch(dir) {
+	case LEFT:   vec3_dup(out, (vec3){ -1.0,  0.0,  0.0 }); break;
+	case RIGHT:  vec3_dup(out, (vec3){  1.0,  0.0,  0.0 }); break;
+	case TOP:    vec3_dup(out, (vec3){  0.0,  1.0,  0.0 }); break;
+	case BOTTOM: vec3_dup(out, (vec3){  0.0, -1.0,  0.0 }); break;
+	case FRONT:  vec3_dup(out, (vec3){  0.0,  0.0,  1.0 }); break;
+	case BACK:   vec3_dup(out, (vec3){  0.0,  0.0, -1.0 }); break;
+	}
+}

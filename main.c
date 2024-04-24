@@ -440,6 +440,20 @@ mouse_click_callback(GLFWwindow *window, int button, int action, int mods)
 				break;
 			}
 		}
+	} else if(button == 1) {
+		vec3 dir, block;
+		RaycastWorld rw = world_begin_raycast(player.position, player.camera_view, 5.0);
+		while(world_raycast(&rw)) {
+			if(rw.block > 0) {
+				block_face_to_dir(rw.face, dir);
+				vec3_add(block, rw.position, dir);
+
+				if(world_get_block(block[0], block[1], block[2]) == BLOCK_NULL) {
+					world_set_block(block[0], block[1], block[2], BLOCK_DIRT);
+				}
+				break;
+			}
+		}
 	}
 }
 
