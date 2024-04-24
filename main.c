@@ -99,7 +99,6 @@ static unsigned int projection_uni, view_uni, terrain_uni, chunk_position_uni;
 static unsigned int quad_buffer, quad_vao;
 
 static mat4x4 projection, view;
-static Chunk chunk;
 
 static Texture terrain;
 static Player player;
@@ -434,6 +433,7 @@ chunk_renderer_generate_buffers(Chunk *chunk)
 void
 mouse_click_callback(GLFWwindow *window, int button, int action, int mods)
 {
+	UNUSED(mods);
 	if(action == GLFW_RELEASE)
 		return;
 
@@ -473,6 +473,11 @@ mouse_click_callback(GLFWwindow *window, int button, int action, int mods)
 void
 keyboard_callback(GLFWwindow *window, int key, int scan, int action, int mods)
 {
+	UNUSED(action);
+	UNUSED(scan);
+	UNUSED(mods);
+	UNUSED(window);
+	
 	if(key == GLFW_KEY_ESCAPE) {
 		locking = false;
 	}
