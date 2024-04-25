@@ -231,7 +231,7 @@ player_update(Player *player, float delta)
 {
 	int w, h;
 	double mx, my, mdx, mdy;
-	vec3 front_dir, right_dir;
+	vec3 front_dir, right_dir, eye_position;
 	
 	if(locking) {
 		glfwGetWindowSize(window, &w, &h);
@@ -272,13 +272,15 @@ player_update(Player *player, float delta)
 			player->jumping = true;
 		}
 
+	vec3_add(eye_position, player->position, (vec3){ 0.0, 0.6, 0.0 });
+
 	front_dir[0] = front_dir[0] * cosf(player->pitch);
 	front_dir[1] = sinf(player->pitch);
 	front_dir[2] = front_dir[2] * cosf(player->pitch);
 	vec3_dup(player->camera_view, front_dir);
-	vec3_add(front_dir, player->position, front_dir);
-
-	mat4x4_look_at(view, player->position, front_dir, (vec3){ 0.0, 1.0, 0.0 });
+	vec3_add(front_dir, eye_position, front_dir);
+	
+	mat4x4_look_at(view, eye_position, front_dir, (vec3){ 0.0, 1.0, 0.0 });
 	
 	physics_accum += delta;
 	vec3_add(player->accel, player->accel, (vec3){ 0.0, -32.0, 0.0 });
@@ -289,7 +291,7 @@ player_update(Player *player, float delta)
 
 		AABB player_aabb;
 		vec3_dup(player_aabb.position, player->position);
-		vec3_dup(player_aabb.halfsize, (vec3){ 0.4, 0.4, 0.4 });
+		vec3_dup(player_aabb.halfsize, (vec3){ 0.4, 0.8, 0.4 });
 		for(int x = -1; x <= 1; x++)
 		for(int y = -1; y <= 1; y++)
 		for(int z = -1; z <= 1; z++) {
@@ -500,8 +502,12 @@ mouse_click_callback(GLFWwindow *window, int button, int action, int mods)
 		return;
 	}
 
+	vec3 eye_position;
+	vec3_add(eye_position, player.position, (vec3){ 0.0, 0.6, 0.0 });
+		
+
 	if(button == 0) {
-		RaycastWorld rw = world_begin_raycast(player.position, player.camera_view, 5.0);
+		RaycastWorld rw = world_begin_raycast(eye_position, player.camera_view, 5.0);
 		while(world_raycast(&rw)) {
 			if(rw.block > 0) {
 				world_set_block(rw.position[0], rw.position[1], rw.position[2], BLOCK_NULL);
@@ -510,7 +516,7 @@ mouse_click_callback(GLFWwindow *window, int button, int action, int mods)
 		}
 	} else if(button == 1) {
 		vec3 dir, block;
-		RaycastWorld rw = world_begin_raycast(player.position, player.camera_view, 5.0);
+		RaycastWorld rw = world_begin_raycast(eye_position, player.camera_view, 5.0);
 		while(world_raycast(&rw)) {
 			if(rw.block > 0) {
 				block_face_to_dir(rw.face, dir);
