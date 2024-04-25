@@ -27,6 +27,8 @@
 #define MAX_PITCH (M_PI_2 - EPSLON)
 #define PLAYER_SPEED 16384.0
 
+#define PHYSICS_DELTA (1.0/480.0)
+
 #define CHUNK_SIZE 16
 #define LAST_BLOCK (CHUNK_SIZE - 1)
 #define BLOCK_SCALE 1.0
@@ -47,6 +49,7 @@ typedef struct {
 } Texture;
 
 static bool locking;
+static float physics_accum;
 
 static void chunk_generate_face(Chunk *chunk, int x, int y, int z, ArrayBuffer *output);
 static void player_update(Player *player, float delta);
@@ -275,43 +278,47 @@ player_update(Player *player, float delta)
 
 	mat4x4_look_at(view, player->position, front_dir, (vec3){ 0.0, 1.0, 0.0 });
 	
+	physics_accum += delta;
 	vec3_add_scaled(player->accel, player->accel, player->velocity, -16.0);
-	vec3_add_scaled(player->velocity, player->velocity, player->accel, delta);
-	vec3_add_scaled(player->position, player->position, player->velocity, delta);
+	while(physics_accum > PHYSICS_DELTA) {
+		vec3_add_scaled(player->position, player->position, player->velocity, PHYSICS_DELTA);
+		vec3_add_scaled(player->velocity, player->velocity, player->accel, PHYSICS_DELTA);
 
-	AABB player_aabb;
-	vec3_dup(player_aabb.position, player->position);
-	vec3_dup(player_aabb.halfsize, (vec3){ 0.4, 0.4, 0.4 });
-	for(int x = -1; x <= 1; x++)
-	for(int y = -1; y <= 1; y++)
-	for(int z = -1; z <= 1; z++) {
-		int player_x = floorf(x + player->position[0]);
-		int player_y = floorf(y + player->position[1]);
-		int player_z = floorf(z + player->position[2]);
+		AABB player_aabb;
+		vec3_dup(player_aabb.position, player->position);
+		vec3_dup(player_aabb.halfsize, (vec3){ 0.4, 0.4, 0.4 });
+		for(int x = -1; x <= 1; x++)
+		for(int y = -1; y <= 1; y++)
+		for(int z = -1; z <= 1; z++) {
+			int player_x = floorf(x + player->position[0]);
+			int player_y = floorf(y + player->position[1]);
+			int player_z = floorf(z + player->position[2]);
 
-		Block b = world_get_block(player_x, player_y, player_z);
-		if(b > 0) {
-			Contact c;
-			AABB block_aabb = {
-				.position = { player_x + 0.5, player_y + 0.5, player_z + 0.5 },
-				.halfsize = { 0.5, 0.5, 0.5 }
-			};
+			Block b = world_get_block(player_x, player_y, player_z);
+			if(b > 0) {
+				Contact c;
+				AABB block_aabb = {
+					.position = { player_x + 0.5, player_y + 0.5, player_z + 0.5 },
+					.halfsize = { 0.5, 0.5, 0.5 }
+				};
 
-			if(collide(&player_aabb, &block_aabb, &c)) {
-				vec3 subv;
+				if(collide(&player_aabb, &block_aabb, &c)) {
+					vec3 subv;
 
-				vec3_sub(player->position, player->position, c.penetration_vector);
-				for(int i = 0; i < 3; i++)
-					subv[i] = fabsf(player->velocity[i]) * c.normal[i];
-				vec3_add(player->velocity, player->velocity, subv);
-				
-				printf("%f %f %f, %f %f %f, %f %f %f, %f %f %f\n", 
-					c.normal[0], c.normal[1], c.normal[2], 
-					player->velocity[0], player->velocity[1], player->velocity[2],
-					c.penetration_vector[0], c.penetration_vector[1], c.penetration_vector[2],
-					subv[0], subv[1], subv[2]);
+					vec3_sub(player->position, player->position, c.penetration_vector);
+					for(int i = 0; i < 3; i++)
+						subv[i] = fabsf(player->velocity[i]) * c.normal[i];
+					vec3_add(player->velocity, player->velocity, subv);
+					
+					printf("%f %f %f, %f %f %f, %f %f %f, %f %f %f\n", 
+						c.normal[0], c.normal[1], c.normal[2], 
+						player->velocity[0], player->velocity[1], player->velocity[2],
+						c.penetration_vector[0], c.penetration_vector[1], c.penetration_vector[2],
+						subv[0], subv[1], subv[2]);
+				}
 			}
 		}
+		physics_accum -= PHYSICS_DELTA;
 	}
 }
 
