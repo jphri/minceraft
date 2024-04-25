@@ -318,12 +318,6 @@ player_update(Player *player, float delta)
 					if(c.normal[1] > 0.0) {
 						player->jumping = false;
 					}
-					
-					printf("%f %f %f, %f %f %f, %f %f %f, %f %f %f\n", 
-						c.normal[0], c.normal[1], c.normal[2], 
-						player->velocity[0], player->velocity[1], player->velocity[2],
-						c.penetration_vector[0], c.penetration_vector[1], c.penetration_vector[2],
-						subv[0], subv[1], subv[2]);
 				}
 			}
 		}
