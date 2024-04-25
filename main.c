@@ -24,7 +24,7 @@
 
 #define EPSLON 0.00001
 #define MAX_PITCH (M_PI_2 - EPSLON)
-#define PLAYER_SPEED 4.0
+#define PLAYER_SPEED 16384.0
 
 #define CHUNK_SIZE 16
 #define LAST_BLOCK (CHUNK_SIZE - 1)
@@ -35,7 +35,7 @@ typedef struct {
 } Vertex;
 
 typedef struct {
-	vec3 position;
+	vec3 position, velocity, accel;
 	float pitch, yaw;
 	vec3 camera_view;
 } Player;
@@ -227,7 +227,7 @@ player_update(Player *player, float delta)
 	int w, h;
 	double mx, my, mdx, mdy;
 	vec3 front_dir, right_dir;
-
+	
 	if(locking) {
 		glfwGetWindowSize(window, &w, &h);
 		glfwGetCursorPos(window, &mx, &my);
@@ -251,19 +251,20 @@ player_update(Player *player, float delta)
 	front_dir[2] = cosf(player->yaw);
 
 	vec3_mul_cross(right_dir, front_dir, (vec3){ 0.0, 1.0, 0.0 });
-	
+
+	vec3_dup(player->accel, (vec3){ 0.0, 0.0, 0.0 });
 	if(glfwGetKey(window, GLFW_KEY_W))
-		vec3_add_scaled(player->position, player->position, front_dir, delta * PLAYER_SPEED);
+		vec3_add_scaled(player->accel, player->accel, front_dir, delta * PLAYER_SPEED);
 	if(glfwGetKey(window, GLFW_KEY_S))
-		vec3_add_scaled(player->position, player->position, front_dir, -delta * PLAYER_SPEED);
+		vec3_add_scaled(player->accel, player->accel, front_dir, -delta * PLAYER_SPEED);
 	if(glfwGetKey(window, GLFW_KEY_A))
-		vec3_add_scaled(player->position, player->position, right_dir, -delta * PLAYER_SPEED);
+		vec3_add_scaled(player->accel, player->accel, right_dir, -delta * PLAYER_SPEED);
 	if(glfwGetKey(window, GLFW_KEY_D))
-		vec3_add_scaled(player->position, player->position, right_dir, delta * PLAYER_SPEED);
+		vec3_add_scaled(player->accel, player->accel, right_dir, delta * PLAYER_SPEED);
 	if(glfwGetKey(window, GLFW_KEY_SPACE))
-		vec3_add_scaled(player->position, player->position, (vec3){ 0.0, 1.0, 0.0 }, delta * PLAYER_SPEED);
+		vec3_add_scaled(player->accel, player->accel, (vec3){ 0.0, 1.0, 0.0 }, delta * PLAYER_SPEED);
 	if(glfwGetKey(window, GLFW_KEY_LEFT_SHIFT))
-		vec3_add_scaled(player->position, player->position, (vec3){ 0.0, 1.0, 0.0 }, -delta * PLAYER_SPEED);
+		vec3_add_scaled(player->accel, player->accel, (vec3){ 0.0, 1.0, 0.0 }, -delta * PLAYER_SPEED);
 
 	front_dir[0] = front_dir[0] * cosf(player->pitch);
 	front_dir[1] = sinf(player->pitch);
@@ -272,6 +273,10 @@ player_update(Player *player, float delta)
 	vec3_add(front_dir, player->position, front_dir);
 
 	mat4x4_look_at(view, player->position, front_dir, (vec3){ 0.0, 1.0, 0.0 });
+	
+	vec3_add_scaled(player->accel, player->accel, player->velocity, -16.0);
+	vec3_add_scaled(player->velocity, player->velocity, player->accel, delta);
+	vec3_add_scaled(player->position, player->position, player->velocity, delta);
 }
 
 void
