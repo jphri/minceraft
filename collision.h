@@ -9,6 +9,11 @@ typedef struct {
 	vec3 normal;
 } Contact;
 
-bool collide(vec3 a, vec3 asize, vec3 b, vec3 bsize, Contact *out);
+typedef struct {
+	vec3 position;
+	vec3 halfsize;
+} AABB;
+
+bool collide(AABB *first, AABB *second, Contact *out);
 
 #endif
