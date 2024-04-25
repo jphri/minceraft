@@ -11,6 +11,7 @@
 #include "glutil.h"
 #include "linmath.h"
 #include "world.h"
+#include "collision.h"
 
 #include <stb_image.h>
 
@@ -24,7 +25,9 @@
 
 #define EPSLON 0.00001
 #define MAX_PITCH (M_PI_2 - EPSLON)
-#define PLAYER_SPEED 4.0
+#define PLAYER_SPEED 16384.0
+
+#define PHYSICS_DELTA (1.0/480.0)
 
 #define CHUNK_SIZE 16
 #define LAST_BLOCK (CHUNK_SIZE - 1)
@@ -35,9 +38,10 @@ typedef struct {
 } Vertex;
 
 typedef struct {
-	vec3 position;
+	vec3 position, velocity, accel;
 	float pitch, yaw;
 	vec3 camera_view;
+	bool jumping;
 } Player;
 
 typedef struct {
@@ -46,6 +50,7 @@ typedef struct {
 } Texture;
 
 static bool locking;
+static float physics_accum;
 
 static void chunk_generate_face(Chunk *chunk, int x, int y, int z, ArrayBuffer *output);
 static void player_update(Player *player, float delta);
@@ -136,9 +141,9 @@ main()
 
 	player.yaw = 0.0;
 	player.pitch = 0.0;
-	player.position[0] = 0;
-	player.position[1] = 0;
-	player.position[2] = 0;
+	player.position[0] = 15;
+	player.position[1] = 15;
+	player.position[2] = 32;
 
 	glfwShowWindow(window);
 	pre_time = glfwGetTime();
@@ -226,8 +231,8 @@ player_update(Player *player, float delta)
 {
 	int w, h;
 	double mx, my, mdx, mdy;
-	vec3 front_dir, right_dir;
-
+	vec3 front_dir, right_dir, eye_position;
+	
 	if(locking) {
 		glfwGetWindowSize(window, &w, &h);
 		glfwGetCursorPos(window, &mx, &my);
@@ -251,27 +256,73 @@ player_update(Player *player, float delta)
 	front_dir[2] = cosf(player->yaw);
 
 	vec3_mul_cross(right_dir, front_dir, (vec3){ 0.0, 1.0, 0.0 });
-	
+
+	vec3_dup(player->accel, (vec3){ 0.0, 0.0, 0.0 });
 	if(glfwGetKey(window, GLFW_KEY_W))
-		vec3_add_scaled(player->position, player->position, front_dir, delta * PLAYER_SPEED);
+		vec3_add_scaled(player->accel, player->accel, front_dir, delta * PLAYER_SPEED);
 	if(glfwGetKey(window, GLFW_KEY_S))
-		vec3_add_scaled(player->position, player->position, front_dir, -delta * PLAYER_SPEED);
+		vec3_add_scaled(player->accel, player->accel, front_dir, -delta * PLAYER_SPEED);
 	if(glfwGetKey(window, GLFW_KEY_A))
-		vec3_add_scaled(player->position, player->position, right_dir, -delta * PLAYER_SPEED);
+		vec3_add_scaled(player->accel, player->accel, right_dir, -delta * PLAYER_SPEED);
 	if(glfwGetKey(window, GLFW_KEY_D))
-		vec3_add_scaled(player->position, player->position, right_dir, delta * PLAYER_SPEED);
-	if(glfwGetKey(window, GLFW_KEY_SPACE))
-		vec3_add_scaled(player->position, player->position, (vec3){ 0.0, 1.0, 0.0 }, delta * PLAYER_SPEED);
-	if(glfwGetKey(window, GLFW_KEY_LEFT_SHIFT))
-		vec3_add_scaled(player->position, player->position, (vec3){ 0.0, 1.0, 0.0 }, -delta * PLAYER_SPEED);
+		vec3_add_scaled(player->accel, player->accel, right_dir, delta * PLAYER_SPEED);
+	if(!player->jumping)
+		if(glfwGetKey(window, GLFW_KEY_SPACE)) {
+			vec3_add(player->velocity, player->velocity, (vec3){ 0.0, 9.0, 0.0 });
+			player->jumping = true;
+		}
+
+	vec3_add(eye_position, player->position, (vec3){ 0.0, 0.6, 0.0 });
 
 	front_dir[0] = front_dir[0] * cosf(player->pitch);
 	front_dir[1] = sinf(player->pitch);
 	front_dir[2] = front_dir[2] * cosf(player->pitch);
 	vec3_dup(player->camera_view, front_dir);
-	vec3_add(front_dir, player->position, front_dir);
+	vec3_add(front_dir, eye_position, front_dir);
+	
+	mat4x4_look_at(view, eye_position, front_dir, (vec3){ 0.0, 1.0, 0.0 });
+	
+	physics_accum += delta;
+	vec3_add(player->accel, player->accel, (vec3){ 0.0, -32.0, 0.0 });
+	vec3_add_scaled(player->accel, player->accel, (vec3){ player->velocity[0], 0.0, player->velocity[2] }, -16.0);
+	while(physics_accum > PHYSICS_DELTA) {
+		vec3_add_scaled(player->position, player->position, player->velocity, PHYSICS_DELTA);
+		vec3_add_scaled(player->velocity, player->velocity, player->accel, PHYSICS_DELTA);
 
-	mat4x4_look_at(view, player->position, front_dir, (vec3){ 0.0, 1.0, 0.0 });
+		AABB player_aabb;
+		vec3_dup(player_aabb.position, player->position);
+		vec3_dup(player_aabb.halfsize, (vec3){ 0.4, 0.8, 0.4 });
+		for(int x = -1; x <= 1; x++)
+		for(int y = -1; y <= 1; y++)
+		for(int z = -1; z <= 1; z++) {
+			int player_x = floorf(x + player->position[0]);
+			int player_y = floorf(y + player->position[1]);
+			int player_z = floorf(z + player->position[2]);
+
+			Block b = world_get_block(player_x, player_y, player_z);
+			if(b > 0) {
+				Contact c;
+				AABB block_aabb = {
+					.position = { player_x + 0.5, player_y + 0.5, player_z + 0.5 },
+					.halfsize = { 0.5, 0.5, 0.5 }
+				};
+
+				if(collide(&player_aabb, &block_aabb, &c)) {
+					vec3 subv;
+
+					vec3_sub(player->position, player->position, c.penetration_vector);
+					for(int i = 0; i < 3; i++)
+						subv[i] = fabsf(player->velocity[i]) * c.normal[i];
+					vec3_add(player->velocity, player->velocity, subv);
+
+					if(c.normal[1] > 0.0) {
+						player->jumping = false;
+					}
+				}
+			}
+		}
+		physics_accum -= PHYSICS_DELTA;
+	}
 }
 
 void
@@ -445,8 +496,12 @@ mouse_click_callback(GLFWwindow *window, int button, int action, int mods)
 		return;
 	}
 
+	vec3 eye_position;
+	vec3_add(eye_position, player.position, (vec3){ 0.0, 0.6, 0.0 });
+		
+
 	if(button == 0) {
-		RaycastWorld rw = world_begin_raycast(player.position, player.camera_view, 5.0);
+		RaycastWorld rw = world_begin_raycast(eye_position, player.camera_view, 5.0);
 		while(world_raycast(&rw)) {
 			if(rw.block > 0) {
 				world_set_block(rw.position[0], rw.position[1], rw.position[2], BLOCK_NULL);
@@ -455,7 +510,7 @@ mouse_click_callback(GLFWwindow *window, int button, int action, int mods)
 		}
 	} else if(button == 1) {
 		vec3 dir, block;
-		RaycastWorld rw = world_begin_raycast(player.position, player.camera_view, 5.0);
+		RaycastWorld rw = world_begin_raycast(eye_position, player.camera_view, 5.0);
 		while(world_raycast(&rw)) {
 			if(rw.block > 0) {
 				block_face_to_dir(rw.face, dir);
