@@ -41,6 +41,7 @@ typedef struct {
 	vec3 position, velocity, accel;
 	float pitch, yaw;
 	vec3 camera_view;
+	bool jumping;
 } Player;
 
 typedef struct {
@@ -140,9 +141,9 @@ main()
 
 	player.yaw = 0.0;
 	player.pitch = 0.0;
-	player.position[0] = 0;
-	player.position[1] = 0;
-	player.position[2] = -3;
+	player.position[0] = 15;
+	player.position[1] = 15;
+	player.position[2] = 32;
 
 	glfwShowWindow(window);
 	pre_time = glfwGetTime();
@@ -265,10 +266,11 @@ player_update(Player *player, float delta)
 		vec3_add_scaled(player->accel, player->accel, right_dir, -delta * PLAYER_SPEED);
 	if(glfwGetKey(window, GLFW_KEY_D))
 		vec3_add_scaled(player->accel, player->accel, right_dir, delta * PLAYER_SPEED);
-	if(glfwGetKey(window, GLFW_KEY_SPACE))
-		vec3_add_scaled(player->accel, player->accel, (vec3){ 0.0, 1.0, 0.0 }, delta * PLAYER_SPEED);
-	if(glfwGetKey(window, GLFW_KEY_LEFT_SHIFT))
-		vec3_add_scaled(player->accel, player->accel, (vec3){ 0.0, 1.0, 0.0 }, -delta * PLAYER_SPEED);
+	if(!player->jumping)
+		if(glfwGetKey(window, GLFW_KEY_SPACE)) {
+			vec3_add(player->velocity, player->velocity, (vec3){ 0.0, 9.0, 0.0 });
+			player->jumping = true;
+		}
 
 	front_dir[0] = front_dir[0] * cosf(player->pitch);
 	front_dir[1] = sinf(player->pitch);
@@ -279,7 +281,8 @@ player_update(Player *player, float delta)
 	mat4x4_look_at(view, player->position, front_dir, (vec3){ 0.0, 1.0, 0.0 });
 	
 	physics_accum += delta;
-	vec3_add_scaled(player->accel, player->accel, player->velocity, -16.0);
+	vec3_add(player->accel, player->accel, (vec3){ 0.0, -32.0, 0.0 });
+	vec3_add_scaled(player->accel, player->accel, (vec3){ player->velocity[0], 0.0, player->velocity[2] }, -16.0);
 	while(physics_accum > PHYSICS_DELTA) {
 		vec3_add_scaled(player->position, player->position, player->velocity, PHYSICS_DELTA);
 		vec3_add_scaled(player->velocity, player->velocity, player->accel, PHYSICS_DELTA);
@@ -309,6 +312,10 @@ player_update(Player *player, float delta)
 					for(int i = 0; i < 3; i++)
 						subv[i] = fabsf(player->velocity[i]) * c.normal[i];
 					vec3_add(player->velocity, player->velocity, subv);
+
+					if(c.normal[1] > 0.0) {
+						player->jumping = false;
+					}
 					
 					printf("%f %f %f, %f %f %f, %f %f %f, %f %f %f\n", 
 						c.normal[0], c.normal[1], c.normal[2], 
