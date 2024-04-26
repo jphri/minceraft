@@ -66,6 +66,8 @@ static void error_callback(int errcode, const char *msg);
 static void mouse_click_callback(GLFWwindow *window, int button, int action, int mods);
 static void keyboard_callback(GLFWwindow *window, int scan, int key, int action, int mods);
 
+static void spiral_load(int x, int y, int z, int range);
+
 static Vertex quad_data[] = {
 	{ { -1.0, -1.0,  0.0 }, { 0.0, 0.0 } },
 	{ {  1.0, -1.0,  0.0 }, { 1.0, 0.0 } },
@@ -134,16 +136,13 @@ main()
 	load_textures();
 
 	world_init();
-	for(int x = 0; x < 10; x++)
-		for(int z = 0; z < 10; z++) {
-			world_enqueue_load(x * CHUNK_SIZE, 0, z * CHUNK_SIZE);
-		}
+	spiral_load(0, 0, 0, 10);
 
 	player.yaw = 0.0;
 	player.pitch = 0.0;
-	player.position[0] = 15;
+	player.position[0] = 0;
 	player.position[1] = 30;
-	player.position[2] = 32;
+	player.position[2] = 0;
 
 	glfwShowWindow(window);
 	pre_time = glfwGetTime();
@@ -535,5 +534,27 @@ keyboard_callback(GLFWwindow *window, int key, int scan, int action, int mods)
 	
 	if(key == GLFW_KEY_ESCAPE) {
 		locking = false;
+	}
+}
+
+void
+spiral_load(int x, int y, int z, int size)
+{
+	int sign = 1;
+	world_enqueue_load(x * CHUNK_SIZE, y * CHUNK_SIZE, z * CHUNK_SIZE);
+	for(int row = 1; row < size; row++) {
+		for(int k = 0; k < row; k++) {
+			x += sign;
+			world_enqueue_load(x * CHUNK_SIZE, y * CHUNK_SIZE, z * CHUNK_SIZE);
+		}
+		for(int k = 0; k < row; k++) {
+			z += -sign;
+			world_enqueue_load(x * CHUNK_SIZE, y * CHUNK_SIZE, z * CHUNK_SIZE);
+		}
+		sign *= -1;
+	}
+	for(int k = 0; k < size - 1; k++) {
+		x += sign;
+		world_enqueue_load(x * CHUNK_SIZE, y * CHUNK_SIZE, z * CHUNK_SIZE);
 	}
 }
