@@ -25,7 +25,7 @@
 
 #define EPSLON 0.00001
 #define MAX_PITCH (M_PI_2 - EPSLON)
-#define PLAYER_SPEED 16384.0
+#define PLAYER_SPEED 100
 
 #define PHYSICS_DELTA (1.0/480.0)
 
@@ -259,13 +259,13 @@ player_update(Player *player, float delta)
 
 	vec3_dup(player->accel, (vec3){ 0.0, 0.0, 0.0 });
 	if(glfwGetKey(window, GLFW_KEY_W))
-		vec3_add_scaled(player->accel, player->accel, front_dir, delta * PLAYER_SPEED);
+		vec3_add_scaled(player->accel, player->accel, front_dir, PLAYER_SPEED);
 	if(glfwGetKey(window, GLFW_KEY_S))
-		vec3_add_scaled(player->accel, player->accel, front_dir, -delta * PLAYER_SPEED);
+		vec3_add_scaled(player->accel, player->accel, front_dir, -PLAYER_SPEED);
 	if(glfwGetKey(window, GLFW_KEY_A))
-		vec3_add_scaled(player->accel, player->accel, right_dir, -delta * PLAYER_SPEED);
+		vec3_add_scaled(player->accel, player->accel, right_dir, -PLAYER_SPEED);
 	if(glfwGetKey(window, GLFW_KEY_D))
-		vec3_add_scaled(player->accel, player->accel, right_dir, delta * PLAYER_SPEED);
+		vec3_add_scaled(player->accel, player->accel, right_dir, PLAYER_SPEED);
 	if(!player->jumping)
 		if(glfwGetKey(window, GLFW_KEY_SPACE)) {
 			vec3_add(player->velocity, player->velocity, (vec3){ 0.0, 9.0, 0.0 });
