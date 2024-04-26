@@ -34,8 +34,9 @@ struct Chunk {
 	unsigned int vert_count;
 	int state;
 	int x, y, z;
-	Chunk *next, *prev;
 	Chunk *genqueue_next;
+
+	bool free;
 };
 
 typedef struct RaycastWorld RaycastWorld;

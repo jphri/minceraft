@@ -11,7 +11,7 @@ typedef enum {
 	READY,
 } ChunkState;
 
-static void reserve_more_chunks();
+#define MAX_CHUNKS 8192
 
 static void chunk_randomize(Chunk *chunk);
 static void *chunk_worker_func(void *);
@@ -24,10 +24,8 @@ static BlockProperties bprop[] = {
 };
 
 static int running;
-static ArrayBuffer chunk_pages;
 
-static Chunk *free_chunk_list;
-static Chunk *used_chunk_list;
+static Chunk chunks[MAX_CHUNKS];
 static Chunk *generate_queue;
 
 static pthread_t chunk_worker;
@@ -39,9 +37,10 @@ world_init()
 {
 	running = true;
 
-	arrbuf_init(&chunk_pages);
-	free_chunk_list = NULL;
-	used_chunk_list = NULL;
+	for(int i = 0; i < MAX_CHUNKS; i++) {
+		chunks[i].free = true;
+		chunks[i].state = READY;
+	}
 
 	pthread_cond_init(&generate_cond, NULL);
 	pthread_mutex_init(&generate_mutex, NULL);
@@ -57,12 +56,6 @@ world_terminate()
 
 	pthread_mutex_destroy(&generate_mutex);
 	pthread_cond_destroy(&generate_cond);
-
-	Span span = arrbuf_span(&chunk_pages);
-	SPAN_FOR(span, page, void*) {
-		free(*page);
-	}
-	arrbuf_free(&chunk_pages);
 }
 
 void
@@ -72,26 +65,14 @@ world_enqueue_load(int x, int y, int z)
 		return;
 
 	Chunk *chunk = find_free_chunk();
-	chunk->x = x;
-	chunk->y = y;
-	chunk->z = z;
+	chunk->x = x & ~(CHUNK_SIZE - 1);
+	chunk->y = y & ~(CHUNK_SIZE - 1);
+	chunk->z = z & ~(CHUNK_SIZE - 1);
 	chunk->chunk_vbo = 0;
 	chunk->chunk_vao = 0;
 	chunk->vert_count = 0;
 	chunk->state = GENERATING;
-
-	if(chunk->next)
-		chunk->next->prev = chunk->prev;
-	if(chunk->prev)
-		chunk->prev->next = chunk->next;
-	if(free_chunk_list == chunk)
-		free_chunk_list = chunk->next;
-
-	chunk->prev = NULL;
-	chunk->next = used_chunk_list;
-	if(used_chunk_list)
-		used_chunk_list->prev = chunk;
-	used_chunk_list = chunk;
+	chunk->free = false;
 
 	pthread_mutex_lock(&generate_mutex);
 	chunk->genqueue_next = generate_queue;
@@ -107,19 +88,7 @@ world_enqueue_unload(int x, int y, int z)
 	if(!chunk)
 		return;
 
-	if(chunk->next)
-		chunk->next->prev = chunk->prev;
-	if(chunk->prev)
-		chunk->prev->next = chunk->next;
-	if(used_chunk_list == chunk)
-		used_chunk_list = chunk->next;
-
-	chunk->prev = NULL;
-	chunk->next = free_chunk_list;
-	if(free_chunk_list)
-		free_chunk_list->prev = chunk;
-	free_chunk_list->prev = chunk;
-	free_chunk_list = chunk;
+	chunk->free = true;
 
 	if(glIsBuffer(chunk->chunk_vbo)) {
 		glDeleteBuffers(1, &chunk->chunk_vbo);
@@ -130,9 +99,9 @@ world_enqueue_unload(int x, int y, int z)
 void
 world_render()
 {
-	for(Chunk *chunk = used_chunk_list;
-		chunk;
-		chunk = chunk->next)
+	for(Chunk *chunk = chunks;
+		chunk < chunks + MAX_CHUNKS;
+		chunk++)
 	{
 		if(chunk->state != READY) 
 			continue;
@@ -164,7 +133,7 @@ chunk_worker_func()
 			pthread_cond_wait(&generate_cond, &generate_mutex);
 		}
 		current_chunk = generate_queue;
-		generate_queue = generate_queue->next;
+		generate_queue = generate_queue->genqueue_next;
 		pthread_mutex_unlock(&generate_mutex);
 
 		chunk_randomize(current_chunk);
@@ -187,42 +156,25 @@ chunk_randomize(Chunk *chunk)
 	}
 }
 
-void
-reserve_more_chunks()
-{
-	Chunk *chunk_page = calloc(1024, sizeof(Chunk));
-	arrbuf_insert(&chunk_pages, sizeof(void*), &chunk_page);
-
-	for(int i = 0; i < 1024; i++) {
-		chunk_page[i].next = free_chunk_list;
-		free_chunk_list = &chunk_page[i];
-	}
-}
-
 Chunk *
 find_chunk(int x, int y, int z)
 {
-	Chunk *c = used_chunk_list;
-	for(; c; c = c->next) {
-		if(c->x == x && c->y == y && c->z == z)
-			break;
+	Chunk *c = chunks;
+	for(; c < chunks + MAX_CHUNKS; c++) {
+		if(!c->free && c->x == x && c->y == y&& c->z == z)
+			return c;
 	}
-	return c;
+	return NULL;
 }
 
 Chunk *
 find_free_chunk()
 {
-	Chunk *chunk = free_chunk_list;
-	while(chunk && chunk->state != GENERATING)
-		chunk = chunk->next;
-
-	if(chunk == NULL) {
-		reserve_more_chunks();
-		chunk = free_chunk_list;
+	for(Chunk *c = chunks; c < chunks + MAX_CHUNKS; c++)  {
+		if(c->free && c->state == READY)
+			return c;
 	}
-
-	return chunk;
+	return NULL;
 }
 
 Block
