@@ -142,7 +142,7 @@ main()
 	player.yaw = 0.0;
 	player.pitch = 0.0;
 	player.position[0] = 15;
-	player.position[1] = 15;
+	player.position[1] = 30;
 	player.position[2] = 32;
 
 	glfwShowWindow(window);

@@ -5,6 +5,7 @@
 #include <math.h>
 #include <GL/glew.h>
 #include <pthread.h>
+#include <unistd.h>
 
 typedef enum {
 	GENERATING,
@@ -17,11 +18,13 @@ typedef struct {
 
 #define MAX_CHUNKS 8192
 #define MAX_WORK 1024
+#define NUM_WORKERS 4
 
 static void chunk_randomize(Chunk *chunk);
 static void *chunk_worker_func(void *);
 static Chunk *find_chunk(int x, int y, int z);
 static Chunk *find_free_chunk();
+static Chunk *allocate_chunk();
 
 static BlockProperties bprop[] = {
 	[BLOCK_NULL]  = { .is_transparent = true },
@@ -32,9 +35,11 @@ static int running;
 
 static Chunk chunks[MAX_CHUNKS];
 
-static pthread_t chunk_worker;
+static pthread_t chunk_worker[NUM_WORKERS];
 static pthread_mutex_t generate_mutex;
 static pthread_cond_t generate_cond;
+
+static pthread_mutex_t chunk_mutex;
 
 static Work work[MAX_WORK];
 static int work_begin, work_end;
@@ -55,18 +60,24 @@ world_init()
 
 	pthread_cond_init(&generate_cond, NULL);
 	pthread_mutex_init(&generate_mutex, NULL);
-	pthread_create(&chunk_worker, NULL, chunk_worker_func, NULL);
+	pthread_mutex_init(&chunk_mutex, NULL);
+	for(int i = 0; i < NUM_WORKERS; i++) {
+		pthread_create(&chunk_worker[i], NULL, chunk_worker_func, NULL);
+	}
 }
 
 void
 world_terminate()
 {
 	running = false;
-	pthread_cond_signal(&generate_cond);
-	pthread_join(chunk_worker, NULL);
-
+	pthread_cond_broadcast(&generate_cond);
+	for(int i = 0; i < NUM_WORKERS; i++) {
+		pthread_join(chunk_worker[i], NULL);
+	}
 	pthread_mutex_destroy(&generate_mutex);
 	pthread_cond_destroy(&generate_cond);
+
+	pthread_mutex_destroy(&chunk_mutex);
 }
 
 void
@@ -133,9 +144,11 @@ chunk_worker_func()
 		if(!running) {
 			return NULL;
 		}
+
 		pthread_mutex_lock(&generate_mutex);
 		while(work_size == 0) {
 			if(!running) {
+				pthread_mutex_unlock(&generate_mutex);
 				return NULL;
 			}
 			pthread_cond_wait(&generate_cond, &generate_mutex);
@@ -152,9 +165,8 @@ chunk_worker_func()
 		if(find_chunk(my_work.x, my_work.y, my_work.z))
 			continue;
 
-		Chunk *chunk = find_free_chunk();
+		Chunk *chunk = allocate_chunk();
 		chunk->state = GENERATING;
-		chunk->free = false;
 		
 		chunk->x = my_work.x & ~(CHUNK_SIZE - 1);
 		chunk->y = my_work.y & ~(CHUNK_SIZE - 1);
@@ -165,6 +177,8 @@ chunk_worker_func()
 
 		chunk_randomize(chunk);
 		chunk->state = READY;
+
+		usleep(100000 + (rand() * 1000000) / RAND_MAX);
 	}
 	return NULL;
 }
@@ -202,6 +216,20 @@ find_free_chunk()
 			return c;
 	}
 	return NULL;
+}
+
+Chunk *
+allocate_chunk()
+{
+	pthread_mutex_lock(&chunk_mutex);
+	Chunk *c = find_free_chunk();
+	if(!c) {
+		return NULL;
+	}
+	c->free = false;
+	pthread_mutex_unlock(&chunk_mutex);
+
+	return c;
 }
 
 Block
