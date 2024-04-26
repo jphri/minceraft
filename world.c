@@ -11,7 +11,12 @@ typedef enum {
 	READY,
 } ChunkState;
 
+typedef struct {
+	int x, y, z;
+} Work;
+
 #define MAX_CHUNKS 8192
+#define MAX_WORK 1024
 
 static void chunk_randomize(Chunk *chunk);
 static void *chunk_worker_func(void *);
@@ -26,11 +31,14 @@ static BlockProperties bprop[] = {
 static int running;
 
 static Chunk chunks[MAX_CHUNKS];
-static Chunk *generate_queue;
 
 static pthread_t chunk_worker;
 static pthread_mutex_t generate_mutex;
 static pthread_cond_t generate_cond;
+
+static Work work[MAX_WORK];
+static int work_begin, work_end;
+static int work_size;
 
 void
 world_init()
@@ -41,6 +49,9 @@ world_init()
 		chunks[i].free = true;
 		chunks[i].state = READY;
 	}
+
+	work_begin = 0;
+	work_end = 0;
 
 	pthread_cond_init(&generate_cond, NULL);
 	pthread_mutex_init(&generate_mutex, NULL);
@@ -61,22 +72,19 @@ world_terminate()
 void
 world_enqueue_load(int x, int y, int z)
 {
-	if(find_chunk(x, y, z))
-		return;
-
-	Chunk *chunk = find_free_chunk();
-	chunk->x = x & ~(CHUNK_SIZE - 1);
-	chunk->y = y & ~(CHUNK_SIZE - 1);
-	chunk->z = z & ~(CHUNK_SIZE - 1);
-	chunk->chunk_vbo = 0;
-	chunk->chunk_vao = 0;
-	chunk->vert_count = 0;
-	chunk->state = GENERATING;
-	chunk->free = false;
-
 	pthread_mutex_lock(&generate_mutex);
-	chunk->genqueue_next = generate_queue;
-	generate_queue = chunk;
+	while(work_size >= MAX_WORK)
+		pthread_cond_wait(&generate_cond, &generate_mutex);
+
+	work[work_end].x = x;
+	work[work_end].y = y;
+	work[work_end].z = z;
+	work_end ++;
+	work_size ++;
+
+	if(work_end >= MAX_WORK) {
+		work_end = 0;
+	}
 	pthread_mutex_unlock(&generate_mutex);
 	pthread_cond_signal(&generate_cond);
 }
@@ -120,24 +128,43 @@ void *
 chunk_worker_func()
 {
 	while(true) {
-		Chunk *current_chunk;
+		Work my_work;
 
 		if(!running) {
 			return NULL;
 		}
 		pthread_mutex_lock(&generate_mutex);
-		while(!generate_queue) {
+		while(work_size == 0) {
 			if(!running) {
 				return NULL;
 			}
 			pthread_cond_wait(&generate_cond, &generate_mutex);
 		}
-		current_chunk = generate_queue;
-		generate_queue = generate_queue->genqueue_next;
+		my_work = work[work_begin];
+		work_begin++;
+		work_size --;
+		if(work_begin >= MAX_WORK) {
+			work_begin = 0;
+		}
 		pthread_mutex_unlock(&generate_mutex);
+		pthread_cond_signal(&generate_cond);
 
-		chunk_randomize(current_chunk);
-		current_chunk->state = READY;
+		if(find_chunk(my_work.x, my_work.y, my_work.z))
+			continue;
+
+		Chunk *chunk = find_free_chunk();
+		chunk->state = GENERATING;
+		chunk->free = false;
+		
+		chunk->x = my_work.x & ~(CHUNK_SIZE - 1);
+		chunk->y = my_work.y & ~(CHUNK_SIZE - 1);
+		chunk->z = my_work.z & ~(CHUNK_SIZE - 1);
+		chunk->chunk_vbo = 0;
+		chunk->chunk_vao = 0;
+		chunk->vert_count = 0;
+
+		chunk_randomize(chunk);
+		chunk->state = READY;
 	}
 	return NULL;
 }
