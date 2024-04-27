@@ -40,6 +40,7 @@ typedef struct {
 	float pitch, yaw;
 	vec3 camera_view;
 	bool jumping;
+	int old_chunk_x, old_chunk_y, old_chunk_z;
 } Player;
 
 typedef struct {
@@ -324,9 +325,15 @@ player_update(Player *player, float delta)
 	int chunk_y = (int)floorf(player->position[1]) & CHUNK_MASK;
 	int chunk_z = (int)floorf(player->position[2]) & CHUNK_MASK;
 	
-	spiral_load(chunk_x, 0, chunk_z, 128);
-	world_set_load_radius(chunk_x, 0, chunk_z, 128);
-	world_set_render_radius(chunk_x, chunk_y, chunk_z, 32);
+	if(chunk_x != player->old_chunk_x || chunk_y != player->old_chunk_y || chunk_z != player->old_chunk_z) {
+		spiral_load(chunk_x, 0, chunk_z, 128);
+		world_set_load_radius(chunk_x, 0, chunk_z, 128);
+		world_set_render_radius(chunk_x, chunk_y, chunk_z, 32);
+
+		player->old_chunk_x = chunk_x;
+		player->old_chunk_y = chunk_y;
+		player->old_chunk_z = chunk_z;
+	}
 }
 
 void
