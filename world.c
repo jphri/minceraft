@@ -48,6 +48,7 @@ static int work_begin, work_end;
 static int work_size;
 
 static int cx, cy, cz, cradius;
+static int rx, ry, rz, rradius;
 static int count_chunks;
 
 void
@@ -145,6 +146,14 @@ world_render()
 		
 		if(!chunk->chunk_vbo) {
 			chunk_renderer_generate_buffers(chunk);
+		}
+
+		dx = abs(chunk->x - rx);
+		dy = abs(chunk->y - ry);
+		dz = abs(chunk->z - rz);
+
+		if(dx > rradius || dy > rradius || dz > rradius) {
+			continue;
 		}
 
 		if(chunk->vert_count > 0) {
@@ -402,6 +411,14 @@ world_set_load_radius(int x, int y, int z, int radius)
 	cy = y;
 	cz = z;
 	cradius = radius;
+}
+void
+world_set_render_radius(int x, int y, int z, int radius)
+{
+	rx = x;
+	ry = y;
+	rz = z;
+	rradius = radius;
 }
 
 void

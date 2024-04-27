@@ -321,11 +321,12 @@ player_update(Player *player, float delta)
 	}
 
 	int chunk_x = (int)floorf(player->position[0]) & CHUNK_MASK;
-	//int chunk_y = (int)floorf(player->position[1]) >> 4;
+	int chunk_y = (int)floorf(player->position[1]) & CHUNK_MASK;
 	int chunk_z = (int)floorf(player->position[2]) & CHUNK_MASK;
 	
-	spiral_load(chunk_x, 0, chunk_z, 2);
-	world_set_load_radius(chunk_x, 0, chunk_z, 32);
+	spiral_load(chunk_x, 0, chunk_z, 128);
+	world_set_load_radius(chunk_x, 0, chunk_z, 128);
+	world_set_render_radius(chunk_x, chunk_y, chunk_z, 32);
 }
 
 void
@@ -545,6 +546,7 @@ void
 spiral_load(int x, int y, int z, int size)
 {
 	size *= 2;
+	size /= CHUNK_SIZE;
 	int sign = 1;
 	world_enqueue_load(x, y, z);
 	for(int row = 1; row < size; row++) {

@@ -73,5 +73,6 @@ void block_face_to_dir(Direction dir, vec3 out);
 const BlockProperties *block_properties(Block block);
 
 void world_set_load_radius(int x, int y, int z, int radius);
+void world_set_render_radius(int x, int y, int z, int radius);
 
 #endif
