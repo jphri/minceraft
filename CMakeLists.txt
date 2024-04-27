@@ -9,6 +9,18 @@ find_library(GLEW GLEW REQUIRED)
 find_library(OPENGL OpenGL REQUIRED)
 
 file(GLOB src "src/*.c")
+add_custom_target(COPY_SHADERS ALL
+	COMMAND ${CMAKE_COMMAND} -E copy_directory
+	${PROJECT_SOURCE_DIR}/shaders
+	${PROJECT_BINARY_DIR}/shaders
+	COMMENT "Copy shaders..."
+)
+add_custom_target(COPY_TEXTURES ALL
+	COMMAND ${CMAKE_COMMAND} -E copy_directory
+	${PROJECT_SOURCE_DIR}/textures
+	${PROJECT_BINARY_DIR}/textures
+	COMMENT "Copy textures..."
+)
 
 set(LIBRARIES linmath stb ${GLFW} ${GLEW} ${OPENGL})
 if(UNIX)
@@ -16,4 +28,5 @@ if(UNIX)
 endif()
 
 add_executable(minceraft ${src})
+add_dependencies(minceraft COPY_SHADERS COPY_TEXTURES)
 target_link_libraries(minceraft PRIVATE ${LIBRARIES})
