@@ -141,6 +141,7 @@ world_render()
 			chunk_renderer_render_chunk(chunk->chunk_vao, chunk->vert_count, (vec3){ chunk->x, chunk->y, chunk->z });
 		}
 	}
+	printf("max chunk id: %d\n", max_chunk_id);
 }
 
 void *
@@ -175,7 +176,8 @@ chunk_worker_func()
 
 		Chunk *chunk = allocate_chunk();
 		chunk->state = GENERATING;
-		
+		chunk->free = false;
+
 		chunk->x = my_work.x & ~(CHUNK_SIZE - 1);
 		chunk->y = my_work.y & ~(CHUNK_SIZE - 1);
 		chunk->z = my_work.z & ~(CHUNK_SIZE - 1);
