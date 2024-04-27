@@ -29,8 +29,6 @@
 
 #define PHYSICS_DELTA (1.0/480.0)
 
-#define CHUNK_SIZE 16
-#define LAST_BLOCK (CHUNK_SIZE - 1)
 #define BLOCK_SCALE 1.0
 typedef struct {
 	vec3 position;
@@ -42,6 +40,7 @@ typedef struct {
 	float pitch, yaw;
 	vec3 camera_view;
 	bool jumping;
+	int old_chunk_x, old_chunk_y, old_chunk_z;
 } Player;
 
 typedef struct {
@@ -66,6 +65,8 @@ static void error_callback(int errcode, const char *msg);
 static void mouse_click_callback(GLFWwindow *window, int button, int action, int mods);
 static void keyboard_callback(GLFWwindow *window, int scan, int key, int action, int mods);
 
+static void spiral_load(int x, int y, int z, int range);
+
 static Vertex quad_data[] = {
 	{ { -1.0, -1.0,  0.0 }, { 0.0, 0.0 } },
 	{ {  1.0, -1.0,  0.0 }, { 1.0, 0.0 } },
@@ -76,7 +77,7 @@ static Vertex quad_data[] = {
 	{ { -1.0, -1.0,  0.0 }, { 0.0, 0.0 } },
 };
 
-static int faces[LAST_BLOCK][6] = {
+static int faces[BLOCK_LAST][6] = {
 	[BLOCK_GRASS] = {
 		2, 2, 2, 2, 0, 1,
 	},
@@ -134,16 +135,12 @@ main()
 	load_textures();
 
 	world_init();
-	for(int x = 0; x < 10; x++)
-		for(int z = 0; z < 10; z++) {
-			world_enqueue_load(x * CHUNK_SIZE, 0, z * CHUNK_SIZE);
-		}
 
 	player.yaw = 0.0;
 	player.pitch = 0.0;
-	player.position[0] = 15;
-	player.position[1] = 15;
-	player.position[2] = 32;
+	player.position[0] = 0;
+	player.position[1] = 30;
+	player.position[2] = 0;
 
 	glfwShowWindow(window);
 	pre_time = glfwGetTime();
@@ -322,6 +319,20 @@ player_update(Player *player, float delta)
 			}
 		}
 		physics_accum -= PHYSICS_DELTA;
+	}
+
+	int chunk_x = (int)floorf(player->position[0]) & CHUNK_MASK;
+	int chunk_y = (int)floorf(player->position[1]) & CHUNK_MASK;
+	int chunk_z = (int)floorf(player->position[2]) & CHUNK_MASK;
+	
+	if(chunk_x != player->old_chunk_x || chunk_y != player->old_chunk_y || chunk_z != player->old_chunk_z) {
+		spiral_load(chunk_x, 0, chunk_z, 128);
+		world_set_load_radius(chunk_x, 0, chunk_z, 128);
+		world_set_render_radius(chunk_x, chunk_y, chunk_z, 32);
+
+		player->old_chunk_x = chunk_x;
+		player->old_chunk_y = chunk_y;
+		player->old_chunk_z = chunk_z;
 	}
 }
 
@@ -535,5 +546,29 @@ keyboard_callback(GLFWwindow *window, int key, int scan, int action, int mods)
 	
 	if(key == GLFW_KEY_ESCAPE) {
 		locking = false;
+	}
+}
+
+void
+spiral_load(int x, int y, int z, int size)
+{
+	size *= 2;
+	size /= CHUNK_SIZE;
+	int sign = 1;
+	world_enqueue_load(x, y, z);
+	for(int row = 1; row < size; row++) {
+		for(int k = 0; k < row; k++) {
+			x += sign * CHUNK_SIZE;
+			world_enqueue_load(x, y, z);
+		}
+		for(int k = 0; k < row; k++) {
+			z += -sign * CHUNK_SIZE;
+			world_enqueue_load(x, y, z);
+		}
+		sign *= -1;
+	}
+	for(int k = 0; k < size - 1; k++) {
+		x += sign * CHUNK_SIZE;
+		world_enqueue_load(x, y, z);
 	}
 }
