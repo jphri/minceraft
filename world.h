@@ -2,6 +2,8 @@
 #define WORLD_H
 
 #define CHUNK_SIZE 16
+#define BLOCK_MASK  (CHUNK_SIZE - 1)
+#define CHUNK_MASK  (~BLOCK_MASK)
 
 #include <linmath.h>
 #include <stdbool.h>

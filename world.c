@@ -178,9 +178,9 @@ chunk_worker_func()
 		chunk->state = GENERATING;
 		chunk->free = false;
 
-		chunk->x = my_work.x & ~(CHUNK_SIZE - 1);
-		chunk->y = my_work.y & ~(CHUNK_SIZE - 1);
-		chunk->z = my_work.z & ~(CHUNK_SIZE - 1);
+		chunk->x = my_work.x & CHUNK_MASK;
+		chunk->y = my_work.y & CHUNK_MASK;
+		chunk->z = my_work.z & CHUNK_MASK;
 		chunk->chunk_vbo = 0;
 		chunk->chunk_vao = 0;
 		chunk->vert_count = 0;
@@ -247,17 +247,17 @@ allocate_chunk()
 Block
 world_get_block(int x, int y, int z)
 {
-	int chunk_x = x & ~(CHUNK_SIZE - 1);
-	int chunk_y = y & ~(CHUNK_SIZE - 1);
-	int chunk_z = z & ~(CHUNK_SIZE - 1);
+	int chunk_x = x & CHUNK_MASK;
+	int chunk_y = y & CHUNK_MASK;
+	int chunk_z = z & CHUNK_MASK;
 
 	Chunk *ch = find_chunk(chunk_x, chunk_y, chunk_z);
 	if(!ch)
 		return BLOCK_UNLOADED;
 
-	x = ((x % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
-	y = ((y % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
-	z = ((z % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+	x &= BLOCK_MASK;
+	y &= BLOCK_MASK;
+	z &= BLOCK_MASK;
 
 	return ch->blocks[z][y][x];
 }
@@ -265,17 +265,17 @@ world_get_block(int x, int y, int z)
 void
 world_set_block(int x, int y, int z, Block block)
 {
-	int chunk_x = x & ~(CHUNK_SIZE - 1);
-	int chunk_y = y & ~(CHUNK_SIZE - 1);
-	int chunk_z = z & ~(CHUNK_SIZE - 1);
+	int chunk_x = x & CHUNK_MASK;
+	int chunk_y = y & CHUNK_MASK;
+	int chunk_z = z & CHUNK_MASK;
 
 	Chunk *ch = find_chunk(chunk_x, chunk_y, chunk_z);
 	if(!ch)
 		return;
 
-	x = ((x % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
-	y = ((y % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
-	z = ((z % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+	x &= BLOCK_MASK;
+	y &= BLOCK_MASK;
+	z &= BLOCK_MASK;
 
 	ch->blocks[z][y][x] = block;
 	if(glIsBuffer(ch->chunk_vbo)) {

@@ -136,7 +136,6 @@ main()
 	load_textures();
 
 	world_init();
-	spiral_load(0, 0, 0, 10);
 
 	player.yaw = 0.0;
 	player.pitch = 0.0;
@@ -323,11 +322,11 @@ player_update(Player *player, float delta)
 		physics_accum -= PHYSICS_DELTA;
 	}
 
-	int chunk_x = (int)floorf(player->position[0]) >> 4;
+	int chunk_x = (int)floorf(player->position[0]) & CHUNK_MASK;
 	//int chunk_y = (int)floorf(player->position[1]) >> 4;
-	int chunk_z = (int)floorf(player->position[2]) >> 4;
+	int chunk_z = (int)floorf(player->position[2]) & CHUNK_MASK;
 	
-	spiral_load(chunk_x, 0, chunk_z, 10);
+	spiral_load(chunk_x, 0, chunk_z, 2);
 }
 
 void
@@ -546,21 +545,22 @@ keyboard_callback(GLFWwindow *window, int key, int scan, int action, int mods)
 void
 spiral_load(int x, int y, int z, int size)
 {
+	size *= 2;
 	int sign = 1;
-	world_enqueue_load(x * CHUNK_SIZE, y * CHUNK_SIZE, z * CHUNK_SIZE);
+	world_enqueue_load(x, y, z);
 	for(int row = 1; row < size; row++) {
 		for(int k = 0; k < row; k++) {
-			x += sign;
-			world_enqueue_load(x * CHUNK_SIZE, y * CHUNK_SIZE, z * CHUNK_SIZE);
+			x += sign * CHUNK_SIZE;
+			world_enqueue_load(x, y, z);
 		}
 		for(int k = 0; k < row; k++) {
-			z += -sign;
-			world_enqueue_load(x * CHUNK_SIZE, y * CHUNK_SIZE, z * CHUNK_SIZE);
+			z += -sign * CHUNK_SIZE;
+			world_enqueue_load(x, y, z);
 		}
 		sign *= -1;
 	}
 	for(int k = 0; k < size - 1; k++) {
-		x += sign;
-		world_enqueue_load(x * CHUNK_SIZE, y * CHUNK_SIZE, z * CHUNK_SIZE);
+		x += sign * CHUNK_SIZE;
+		world_enqueue_load(x, y, z);
 	}
 }
