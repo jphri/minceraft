@@ -34,6 +34,7 @@ static BlockProperties bprop[] = {
 static int running;
 
 static Chunk chunks[MAX_CHUNKS];
+static int max_chunk_id;
 
 static pthread_t chunk_worker[NUM_WORKERS];
 static pthread_mutex_t generate_mutex;
@@ -119,7 +120,7 @@ void
 world_render()
 {
 	for(Chunk *chunk = chunks;
-		chunk < chunks + MAX_CHUNKS;
+		chunk < chunks + max_chunk_id + 1;
 		chunk++)
 	{
 		if(chunk->state != READY) 
@@ -201,7 +202,7 @@ Chunk *
 find_chunk(int x, int y, int z)
 {
 	Chunk *c = chunks;
-	for(; c < chunks + MAX_CHUNKS; c++) {
+	for(; c < chunks + max_chunk_id + 1; c++) {
 		if(!c->free && c->x == x && c->y == y&& c->z == z)
 			return c;
 	}
@@ -227,6 +228,8 @@ allocate_chunk()
 		return NULL;
 	}
 	c->free = false;
+	if(c - chunks > max_chunk_id)
+		max_chunk_id = (c - chunks);
 	pthread_mutex_unlock(&chunk_mutex);
 
 	return c;
