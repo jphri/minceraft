@@ -43,6 +43,9 @@ static volatile int max_chunk_id;
 static int cx, cy, cz, cradius;
 static pthread_mutex_t chunk_mutex;
 
+static PCG32State world_gen;
+static pthread_mutex_t world_gen_mtx;
+
 void
 world_init()
 {
@@ -55,6 +58,8 @@ world_init()
 	}
 	memset(chunkmap, 0, sizeof(chunkmap));
 	pthread_mutex_init(&chunk_mutex, NULL);
+	world_gen = hash_string("Gente que passa o dia inteiro no twitter e em chan não deveria nem ter direito a voto.");
+	init_pcg32(&world_gen);
 }
 
 void
@@ -70,11 +75,13 @@ chunk_randomize(Chunk *chunk)
 	for(int z = 0; z < CHUNK_SIZE; z++)
 	for(int y = 0; y < CHUNK_SIZE; y++)
 	for(int x = 0; x < CHUNK_SIZE; x++) {
-		if(!(rand() & 15) && x > 1 && x < 14 && z > 1 && z < 14) {
-			chunk->blocks[x][y][z] = rand() % (BLOCK_LAST - BLOCK_GRASS) + BLOCK_GRASS;
+		pthread_mutex_lock(&world_gen_mtx);
+		if(rand_pcg32(&world_gen) & 1) {
+			chunk->blocks[x][y][z] = rand_pcg32(&world_gen) % (BLOCK_LAST - BLOCK_GRASS) + BLOCK_GRASS;
 		} else {
 			chunk->blocks[x][y][z] = 0;
 		}
+		pthread_mutex_unlock(&world_gen_mtx);
 	}
 }
 

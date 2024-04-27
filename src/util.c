@@ -14,6 +14,9 @@
 
 #define OBJECT_ALLOCATOR_PAGE_SIZE 1024
 
+static uint64_t const multiplier = 6364136223846793005u;
+static uint64_t const increment = 1442695040888963407u;
+
 typedef struct ObjectNode ObjectNode;
 struct ObjectNode {
 	ObjectPool *pool;
@@ -895,4 +898,45 @@ worker_bootstrap(void *w)
 	WorkGroup *wg = w;
 	wg->worker_func(wg);
 	return NULL;
+}
+
+uint32_t
+rotr32(uint32_t x, int r)
+{
+	return x >> r | (x << (-r & 31));
+}
+
+uint32_t
+rotl32(uint32_t x, int r)
+{
+	return x << r | (x >> (-r & 31));
+}
+
+uint64_t
+hash_string(const char *str)
+{
+	uint64_t seed = 0x5555555555555555;
+	while(*str) {
+		seed ^= *str++;
+		seed = rotl32(seed, 5);
+	}
+	return seed;
+}
+
+void
+init_pcg32(PCG32State *state)
+{
+	*state += increment;
+	(void)rand_pcg32(state);
+}
+
+uint32_t
+rand_pcg32(PCG32State *state)
+{
+	uint64_t x = *state;
+	unsigned count = (unsigned)(x >> 59);
+	
+	*state = x * multiplier + increment;
+	x ^= x >> 18;
+	return rotr32((uint32_t)(x >> 27), count);
 }
