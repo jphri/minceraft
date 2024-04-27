@@ -149,7 +149,6 @@ world_render()
 			chunk_renderer_render_chunk(chunk->chunk_vao, chunk->vert_count, (vec3){ chunk->x, chunk->y, chunk->z });
 		}
 	}
-	printf("max chunk id: %d, count chunks: %d\n", max_chunk_id, count_chunks);
 }
 
 void *
@@ -194,8 +193,6 @@ chunk_worker_func()
 
 		chunk_randomize(chunk);
 		chunk->state = READY;
-
-		usleep(100000 + (rand() * 1000000) / RAND_MAX);
 	}
 	return NULL;
 }
