@@ -85,6 +85,13 @@ void
 world_enqueue_load(int x, int y, int z)
 {
 	pthread_mutex_lock(&generate_mutex);
+	for(int k = 0; k < work_size; k++) {
+		int i = (work_begin + k) % MAX_WORK;
+		if(work[i].x == x && work[i].y == y && work[i].z == z) {
+			pthread_mutex_unlock(&generate_mutex);
+			return;
+		}
+	}
 	while(work_size >= MAX_WORK)
 		pthread_cond_wait(&generate_cond, &generate_mutex);
 

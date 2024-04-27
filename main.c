@@ -322,6 +322,12 @@ player_update(Player *player, float delta)
 		}
 		physics_accum -= PHYSICS_DELTA;
 	}
+
+	int chunk_x = (int)floorf(player->position[0]) >> 4;
+	//int chunk_y = (int)floorf(player->position[1]) >> 4;
+	int chunk_z = (int)floorf(player->position[2]) >> 4;
+	
+	spiral_load(chunk_x, 0, chunk_z, 10);
 }
 
 void
