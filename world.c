@@ -25,6 +25,7 @@ static void *chunk_worker_func(void *);
 static Chunk *find_chunk(int x, int y, int z);
 static Chunk *find_free_chunk();
 static Chunk *allocate_chunk();
+static void   deallocate_chunk(Chunk *c);
 
 static BlockProperties bprop[] = {
 	[BLOCK_NULL]  = { .is_transparent = true },
@@ -45,6 +46,9 @@ static pthread_mutex_t chunk_mutex;
 static Work work[MAX_WORK];
 static int work_begin, work_end;
 static int work_size;
+
+static int cx, cy, cz, cradius;
+static int count_chunks;
 
 void
 world_init()
@@ -114,13 +118,8 @@ world_enqueue_unload(int x, int y, int z)
 	Chunk *chunk = find_chunk(x, y, z);
 	if(!chunk)
 		return;
-
-	chunk->free = true;
-
-	if(glIsBuffer(chunk->chunk_vbo)) {
-		glDeleteBuffers(1, &chunk->chunk_vbo);
-		glDeleteVertexArrays(1, &chunk->chunk_vao);
-	}
+	
+	deallocate_chunk(chunk);
 }
 
 void
@@ -130,8 +129,17 @@ world_render()
 		chunk < chunks + max_chunk_id + 1;
 		chunk++)
 	{
-		if(chunk->state != READY) 
+		if(chunk->free || chunk->state != READY) 
 			continue;
+
+		int dx = abs(chunk->x - cx);
+		int dy = abs(chunk->y - cy);
+		int dz = abs(chunk->z - cz);
+
+		if(dx > cradius || dy > cradius || dz > cradius) {
+			deallocate_chunk(chunk);
+			continue;
+		}
 		
 		if(!chunk->chunk_vbo) {
 			chunk_renderer_generate_buffers(chunk);
@@ -141,7 +149,7 @@ world_render()
 			chunk_renderer_render_chunk(chunk->chunk_vao, chunk->vert_count, (vec3){ chunk->x, chunk->y, chunk->z });
 		}
 	}
-	printf("max chunk id: %d\n", max_chunk_id);
+	printf("max chunk id: %d, count chunks: %d\n", max_chunk_id, count_chunks);
 }
 
 void *
@@ -173,10 +181,9 @@ chunk_worker_func()
 
 		if(find_chunk(my_work.x, my_work.y, my_work.z))
 			continue;
-
+		
 		Chunk *chunk = allocate_chunk();
 		chunk->state = GENERATING;
-		chunk->free = false;
 
 		chunk->x = my_work.x & CHUNK_MASK;
 		chunk->y = my_work.y & CHUNK_MASK;
@@ -239,6 +246,7 @@ allocate_chunk()
 	c->free = false;
 	if(c - chunks > max_chunk_id)
 		max_chunk_id = (c - chunks);
+	count_chunks++;
 	pthread_mutex_unlock(&chunk_mutex);
 
 	return c;
@@ -386,4 +394,27 @@ const BlockProperties *
 block_properties(Block b)
 {
 	return &bprop[b];
+}
+
+void
+world_set_load_radius(int x, int y, int z, int radius)
+{
+	cx = x;
+	cy = y;
+	cz = z;
+	cradius = radius;
+}
+
+void
+deallocate_chunk(Chunk *chunk)
+{
+	pthread_mutex_lock(&chunk_mutex);
+	chunk->free = true;
+	count_chunks--;
+	pthread_mutex_unlock(&chunk_mutex);
+
+	if(glIsBuffer(chunk->chunk_vbo)) {
+		glDeleteBuffers(1, &chunk->chunk_vbo);
+		glDeleteVertexArrays(1, &chunk->chunk_vao);
+	}
 }

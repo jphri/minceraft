@@ -327,6 +327,7 @@ player_update(Player *player, float delta)
 	int chunk_z = (int)floorf(player->position[2]) & CHUNK_MASK;
 	
 	spiral_load(chunk_x, 0, chunk_z, 2);
+	world_set_load_radius(chunk_x, 0, chunk_z, 32);
 }
 
 void
