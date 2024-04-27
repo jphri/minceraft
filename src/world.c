@@ -1,3 +1,4 @@
+#include "glutil.h"
 #include "util.h"
 #include "world.h"
 #include "cubegame.h"
@@ -29,7 +30,8 @@ static void   deallocate_chunk(Chunk *c);
 
 static BlockProperties bprop[] = {
 	[BLOCK_NULL]  = { .is_transparent = true },
-	[BLOCK_GLASS] = { .is_transparent = true }
+	[BLOCK_GLASS] = { .is_transparent = true }, 
+	[BLOCK_WATER] = { .is_transparent = true }
 };
 
 static int running;
@@ -156,9 +158,7 @@ world_render()
 			continue;
 		}
 
-		if(chunk->vert_count > 0) {
-			chunk_renderer_render_chunk(chunk->chunk_vao, chunk->vert_count, (vec3){ chunk->x, chunk->y, chunk->z });
-		}
+		chunk_renderer_render_chunk(chunk);
 	}
 }
 
@@ -299,6 +299,9 @@ world_set_block(int x, int y, int z, Block block)
 		glDeleteBuffers(1, &ch->chunk_vbo);
 		glDeleteVertexArrays(1, &ch->chunk_vao);
 
+		glDeleteBuffers(1, &ch->water_vbo);
+		glDeleteVertexArrays(1, &ch->water_vao);
+
 		ch->chunk_vao = 0;
 		ch->chunk_vbo = 0;
 	}
@@ -432,5 +435,8 @@ deallocate_chunk(Chunk *chunk)
 	if(glIsBuffer(chunk->chunk_vbo)) {
 		glDeleteBuffers(1, &chunk->chunk_vbo);
 		glDeleteVertexArrays(1, &chunk->chunk_vao);
+
+		glDeleteBuffers(1, &chunk->water_vbo);
+		glDeleteVertexArrays(1, &chunk->water_vao);
 	}
 }
