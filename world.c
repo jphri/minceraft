@@ -34,7 +34,7 @@ static BlockProperties bprop[] = {
 
 static int running;
 
-static Chunk chunks[MAX_CHUNKS];
+static Chunk *chunks;
 static int max_chunk_id;
 
 static pthread_t chunk_worker[NUM_WORKERS];
@@ -55,6 +55,7 @@ world_init()
 {
 	running = true;
 
+	chunks = malloc(sizeof(Chunk) * MAX_CHUNKS);
 	for(int i = 0; i < MAX_CHUNKS; i++) {
 		chunks[i].free = true;
 		chunks[i].state = READY;
@@ -83,6 +84,7 @@ world_terminate()
 	pthread_cond_destroy(&generate_cond);
 
 	pthread_mutex_destroy(&chunk_mutex);
+	free(chunks);
 }
 
 void
