@@ -29,8 +29,6 @@
 
 #define PHYSICS_DELTA (1.0/480.0)
 
-#define CHUNK_SIZE 16
-#define LAST_BLOCK (CHUNK_SIZE - 1)
 #define BLOCK_SCALE 1.0
 typedef struct {
 	vec3 position;
@@ -78,7 +76,7 @@ static Vertex quad_data[] = {
 	{ { -1.0, -1.0,  0.0 }, { 0.0, 0.0 } },
 };
 
-static int faces[LAST_BLOCK][6] = {
+static int faces[BLOCK_LAST][6] = {
 	[BLOCK_GRASS] = {
 		2, 2, 2, 2, 0, 1,
 	},

@@ -2,6 +2,7 @@
 #define WORLD_H
 
 #define CHUNK_SIZE 16
+#define LAST_BLOCK  (CHUNK_SIZE - 1)
 #define BLOCK_MASK  (CHUNK_SIZE - 1)
 #define CHUNK_MASK  (~BLOCK_MASK)
 
