@@ -158,7 +158,38 @@ world_render()
 			continue;
 		}
 
-		chunk_renderer_render_chunk(chunk);
+		chunk_renderer_render_solid_chunk(chunk);
+	}
+
+	for(Chunk *chunk = chunks;
+		chunk < chunks + max_chunk_id + 1;
+		chunk++)
+	{
+		if(chunk->free || chunk->state != READY) 
+			continue;
+
+		int dx = abs(chunk->x - cx);
+		int dy = abs(chunk->y - cy);
+		int dz = abs(chunk->z - cz);
+
+		if(dx > cradius || dy > cradius || dz > cradius) {
+			deallocate_chunk(chunk);
+			continue;
+		}
+		
+		if(!chunk->chunk_vbo) {
+			chunk_renderer_generate_buffers(chunk);
+		}
+
+		dx = abs(chunk->x - rx);
+		dy = abs(chunk->y - ry);
+		dz = abs(chunk->z - rz);
+
+		if(dx > rradius || dy > rradius || dz > rradius) {
+			continue;
+		}
+
+		chunk_renderer_render_water_chunk(chunk);
 	}
 }
 

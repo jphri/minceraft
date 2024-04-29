@@ -536,7 +536,7 @@ load_textures()
 }
 
 void
-chunk_renderer_render_chunk(Chunk *c)
+chunk_renderer_render_solid_chunk(Chunk *c)
 {
 	glUniform3fv(chunk_position_uni, 1, (vec3){ c->x, c->y, c->z });
 	glUniform1f(alpha_uni, 1.0);
@@ -551,6 +551,18 @@ chunk_renderer_render_chunk(Chunk *c)
 		glBindVertexArray(c->chunk_vao);
 		glDrawArrays(GL_TRIANGLES, 0, c->vert_count);
 	}
+
+	glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+void
+chunk_renderer_render_water_chunk(Chunk *c)
+{
+	glUniform3fv(chunk_position_uni, 1, (vec3){ c->x, c->y, c->z });
+	glUniform1f(alpha_uni, 1.0);
+
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, terrain.texture);
 
 	glUniform1f(alpha_uni, 0.9);
 
