@@ -1,6 +1,7 @@
+#include "glutil.h"
 #include "util.h"
 #include "world.h"
-#include "cubegame.h"
+#include "chunk_renderer.h"
 
 #include <math.h>
 #include <GL/glew.h>
@@ -29,7 +30,8 @@ static void   deallocate_chunk(Chunk *c);
 
 static BlockProperties bprop[] = {
 	[BLOCK_NULL]  = { .is_transparent = true },
-	[BLOCK_GLASS] = { .is_transparent = true }
+	[BLOCK_GLASS] = { .is_transparent = true }, 
+	[BLOCK_WATER] = { .is_transparent = true }
 };
 
 static int running;
@@ -128,6 +130,7 @@ world_enqueue_unload(int x, int y, int z)
 void
 world_render()
 {
+	chunk_render_update();
 	for(Chunk *chunk = chunks;
 		chunk < chunks + max_chunk_id + 1;
 		chunk++)
@@ -145,7 +148,7 @@ world_render()
 		}
 		
 		if(!chunk->chunk_vbo) {
-			chunk_renderer_generate_buffers(chunk);
+			chunk_render_generate_buffers(chunk);
 		}
 
 		dx = abs(chunk->x - rx);
@@ -156,9 +159,38 @@ world_render()
 			continue;
 		}
 
-		if(chunk->vert_count > 0) {
-			chunk_renderer_render_chunk(chunk->chunk_vao, chunk->vert_count, (vec3){ chunk->x, chunk->y, chunk->z });
+		chunk_render_render_solid_chunk(chunk);
+	}
+
+	for(Chunk *chunk = chunks;
+		chunk < chunks + max_chunk_id + 1;
+		chunk++)
+	{
+		if(chunk->free || chunk->state != READY) 
+			continue;
+
+		int dx = abs(chunk->x - cx);
+		int dy = abs(chunk->y - cy);
+		int dz = abs(chunk->z - cz);
+
+		if(dx > cradius || dy > cradius || dz > cradius) {
+			deallocate_chunk(chunk);
+			continue;
 		}
+		
+		if(!chunk->chunk_vbo) {
+			chunk_render_generate_buffers(chunk);
+		}
+
+		dx = abs(chunk->x - rx);
+		dy = abs(chunk->y - ry);
+		dz = abs(chunk->z - rz);
+
+		if(dx > rradius || dy > rradius || dz > rradius) {
+			continue;
+		}
+
+		chunk_render_render_water_chunk(chunk);
 	}
 }
 
@@ -299,6 +331,9 @@ world_set_block(int x, int y, int z, Block block)
 		glDeleteBuffers(1, &ch->chunk_vbo);
 		glDeleteVertexArrays(1, &ch->chunk_vao);
 
+		glDeleteBuffers(1, &ch->water_vbo);
+		glDeleteVertexArrays(1, &ch->water_vao);
+
 		ch->chunk_vao = 0;
 		ch->chunk_vbo = 0;
 	}
@@ -432,5 +467,8 @@ deallocate_chunk(Chunk *chunk)
 	if(glIsBuffer(chunk->chunk_vbo)) {
 		glDeleteBuffers(1, &chunk->chunk_vbo);
 		glDeleteVertexArrays(1, &chunk->chunk_vao);
+
+		glDeleteBuffers(1, &chunk->water_vbo);
+		glDeleteVertexArrays(1, &chunk->water_vao);
 	}
 }

@@ -17,6 +17,7 @@ typedef enum {
 	BLOCK_SAND,
 	BLOCK_PLANKS,
 	BLOCK_GLASS,
+	BLOCK_WATER,
 	BLOCK_LAST,
 	BLOCK_UNLOADED = -1
 } Block;
@@ -35,6 +36,10 @@ struct Chunk {
 	int blocks[CHUNK_SIZE][CHUNK_SIZE][CHUNK_SIZE];
 	unsigned int chunk_vbo, chunk_vao;
 	unsigned int vert_count;
+
+	unsigned int water_vbo, water_vao;
+	unsigned int water_vert_count;
+
 	int state;
 	int x, y, z;
 	Chunk *genqueue_next;
