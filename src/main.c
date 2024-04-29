@@ -105,7 +105,8 @@ static int faces[BLOCK_LAST][6] = {
 
 static GLFWwindow *window;
 static unsigned int chunk_program;
-static unsigned int projection_uni, view_uni, terrain_uni, chunk_position_uni;
+static unsigned int projection_uni, view_uni, terrain_uni, chunk_position_uni,
+					alpha_uni;
 
 static unsigned int quad_buffer, quad_vao;
 
@@ -210,10 +211,11 @@ load_programs()
 	glDeleteShader(chunk_vertex);
 	glDeleteShader(chunk_fragment);
 	
-	projection_uni = glGetUniformLocation(chunk_program, "u_Projection");
-	view_uni       = glGetUniformLocation(chunk_program, "u_View");
-	terrain_uni    = glGetUniformLocation(chunk_program, "u_Terrain");
+	projection_uni     = glGetUniformLocation(chunk_program, "u_Projection");
+	view_uni           = glGetUniformLocation(chunk_program, "u_View");
+	terrain_uni        = glGetUniformLocation(chunk_program, "u_Terrain");
 	chunk_position_uni = glGetUniformLocation(chunk_program, "u_ChunkPosition");
+	alpha_uni          = glGetUniformLocation(chunk_program, "u_Alpha");
 	UGL_ASSERT();
 }
 
@@ -537,15 +539,23 @@ void
 chunk_renderer_render_chunk(Chunk *c)
 {
 	glUniform3fv(chunk_position_uni, 1, (vec3){ c->x, c->y, c->z });
+	glUniform1f(alpha_uni, 1.0);
 
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, terrain.texture);
 
+	glEnable(GL_DEPTH_TEST);
+	glDisable(GL_BLEND);
 
 	if(c->vert_count > 0) {
 		glBindVertexArray(c->chunk_vao);
 		glDrawArrays(GL_TRIANGLES, 0, c->vert_count);
 	}
+
+	glUniform1f(alpha_uni, 0.9);
+
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 	if(c->water_vert_count > 0) {
 		glBindVertexArray(c->water_vao);
