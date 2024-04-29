@@ -1,7 +1,7 @@
 #include "glutil.h"
 #include "util.h"
 #include "world.h"
-#include "cubegame.h"
+#include "chunk_renderer.h"
 
 #include <math.h>
 #include <GL/glew.h>
@@ -130,6 +130,7 @@ world_enqueue_unload(int x, int y, int z)
 void
 world_render()
 {
+	chunk_render_update();
 	for(Chunk *chunk = chunks;
 		chunk < chunks + max_chunk_id + 1;
 		chunk++)
@@ -147,7 +148,7 @@ world_render()
 		}
 		
 		if(!chunk->chunk_vbo) {
-			chunk_renderer_generate_buffers(chunk);
+			chunk_render_generate_buffers(chunk);
 		}
 
 		dx = abs(chunk->x - rx);
@@ -158,7 +159,7 @@ world_render()
 			continue;
 		}
 
-		chunk_renderer_render_solid_chunk(chunk);
+		chunk_render_render_solid_chunk(chunk);
 	}
 
 	for(Chunk *chunk = chunks;
@@ -178,7 +179,7 @@ world_render()
 		}
 		
 		if(!chunk->chunk_vbo) {
-			chunk_renderer_generate_buffers(chunk);
+			chunk_render_generate_buffers(chunk);
 		}
 
 		dx = abs(chunk->x - rx);
@@ -189,7 +190,7 @@ world_render()
 			continue;
 		}
 
-		chunk_renderer_render_water_chunk(chunk);
+		chunk_render_render_water_chunk(chunk);
 	}
 }
 
