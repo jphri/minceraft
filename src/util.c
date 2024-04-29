@@ -4,6 +4,7 @@
 #include <stdarg.h>
 #include <ctype.h>
 #include <assert.h>
+#include <pthread.h>
 
 #include "util.h"
 
@@ -80,6 +81,7 @@ static void remove_obj_node(ObjectPool *pool, void *data)
 
 static void *defaultalloc_allocate(size_t bytes, void *user_ptr);
 static void  defaultalloc_deallocate(void *ptr, void *user_ptr);
+static void *worker_bootstrap(void *);
 
 static inline void check_buffer_initialized(ArrayBuffer *buffer)
 {
@@ -778,3 +780,96 @@ utf8_multibyte_prev(StrView view, int from)
 	return prev;
 }
 
+WorkGroup *
+wg_init(void (*worker_func)(WorkGroup *), size_t work_data_size, size_t max_work_count, size_t worker_count)
+{
+	WorkGroup *wg = malloc(sizeof(*wg) + worker_count * sizeof(wg->workers[0]));
+
+	wg->queue = malloc(work_data_size * max_work_count);
+	wg->queue_begin = wg->queue;
+	wg->queue_end = wg->queue;
+	wg->size = work_data_size * max_work_count;
+	wg->enqueued = 0;
+	wg->elem_size = work_data_size;
+	wg->worker_count = worker_count;
+	wg->worker_func = worker_func;
+
+	pthread_mutex_init(&wg->mtx, NULL);
+	pthread_cond_init(&wg->cond, NULL);
+
+	for(int i = 0; i < worker_count; i++) {
+		pthread_create(&wg->workers[i], NULL, worker_bootstrap, wg);
+	}
+
+	return wg;
+}
+
+void
+wg_terminate(WorkGroup *wg)
+{
+	pthread_mutex_lock(&wg->mtx);
+	wg->terminated = true;
+	pthread_mutex_unlock(&wg->mtx);
+	pthread_cond_broadcast(&wg->cond);
+
+	for(int i = 0; i < wg->worker_count; i++)
+		pthread_join(wg->workers[i], NULL);
+	
+	free(wg->queue);
+	pthread_mutex_destroy(&wg->mtx);
+	pthread_cond_destroy(&wg->cond);
+
+	free(wg);
+}
+
+bool
+wg_send(WorkGroup *c, void *ptr)
+{
+	pthread_mutex_lock(&c->mtx);
+	while(c->enqueued == c->size) {
+		if(c->terminated) {
+			pthread_mutex_unlock(&c->mtx);
+			return false;
+		}
+		pthread_cond_wait(&c->cond, &c->mtx);
+	}
+	memcpy(c->queue_end, ptr, c->elem_size);
+	c->queue_end = ((unsigned char*)c->queue_end) + c->elem_size;
+	c->enqueued += c->elem_size;
+	if((unsigned char*)c->queue_end >= (unsigned char*)c->queue + c->size) {
+		c->queue_end = c->queue;
+	}
+	pthread_mutex_unlock(&c->mtx);
+	pthread_cond_signal(&c->cond);
+	return true;
+}
+
+bool
+wg_recv(WorkGroup *c, void *ptr)
+{
+	pthread_mutex_lock(&c->mtx);
+	while(c->enqueued == 0) {
+		if(c->terminated) {
+			pthread_mutex_unlock(&c->mtx);
+			return false;
+		}
+		pthread_cond_wait(&c->cond, &c->mtx);
+	}
+	memcpy(ptr, c->queue_begin, c->elem_size);
+	c->queue_begin = ((unsigned char*)c->queue_begin) + c->elem_size;
+	c->enqueued -= c->elem_size;
+	if((unsigned char*)c->queue_begin >= (unsigned char*)c->queue + c->size) {
+		c->queue_begin = c->queue;
+	}
+	pthread_mutex_unlock(&c->mtx);
+	pthread_cond_signal(&c->cond);
+	return true;
+}
+
+void *
+worker_bootstrap(void *w)
+{
+	WorkGroup *wg = w;
+	wg->worker_func(wg);
+	return NULL;
+}

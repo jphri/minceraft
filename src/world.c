@@ -22,7 +22,7 @@ typedef struct {
 #define NUM_WORKERS 4
 
 static void chunk_randomize(Chunk *chunk);
-static void *chunk_worker_func(void *);
+static void chunk_worker_func(WorkGroup *wg);
 static Chunk *find_chunk(int x, int y, int z);
 static Chunk *find_free_chunk();
 static Chunk *allocate_chunk();
@@ -39,15 +39,9 @@ static int running;
 static Chunk *chunks;
 static int max_chunk_id;
 
-static pthread_t chunk_worker[NUM_WORKERS];
-static pthread_mutex_t generate_mutex;
-static pthread_cond_t generate_cond;
-
 static pthread_mutex_t chunk_mutex;
 
-static Work work[MAX_WORK];
-static int work_begin, work_end;
-static int work_size;
+static WorkGroup *workg;
 
 static int cx, cy, cz, cradius;
 static int rx, ry, rz, rradius;
@@ -64,28 +58,14 @@ world_init()
 		chunks[i].state = READY;
 	}
 
-	work_begin = 0;
-	work_end = 0;
-
-	pthread_cond_init(&generate_cond, NULL);
-	pthread_mutex_init(&generate_mutex, NULL);
-	pthread_mutex_init(&chunk_mutex, NULL);
-	for(int i = 0; i < NUM_WORKERS; i++) {
-		pthread_create(&chunk_worker[i], NULL, chunk_worker_func, NULL);
-	}
+	workg = wg_init(chunk_worker_func, sizeof(Work), MAX_WORK, 4);
 }
 
 void
 world_terminate()
 {
 	running = false;
-	pthread_cond_broadcast(&generate_cond);
-	for(int i = 0; i < NUM_WORKERS; i++) {
-		pthread_join(chunk_worker[i], NULL);
-	}
-	pthread_mutex_destroy(&generate_mutex);
-	pthread_cond_destroy(&generate_cond);
-
+	wg_terminate(workg);
 	pthread_mutex_destroy(&chunk_mutex);
 	free(chunks);
 }
@@ -93,28 +73,11 @@ world_terminate()
 void
 world_enqueue_load(int x, int y, int z)
 {
-	pthread_mutex_lock(&generate_mutex);
-	for(int k = 0; k < work_size; k++) {
-		int i = (work_begin + k) % MAX_WORK;
-		if(work[i].x == x && work[i].y == y && work[i].z == z) {
-			pthread_mutex_unlock(&generate_mutex);
-			return;
-		}
-	}
-	while(work_size >= MAX_WORK)
-		pthread_cond_wait(&generate_cond, &generate_mutex);
-
-	work[work_end].x = x;
-	work[work_end].y = y;
-	work[work_end].z = z;
-	work_end ++;
-	work_size ++;
-
-	if(work_end >= MAX_WORK) {
-		work_end = 0;
-	}
-	pthread_mutex_unlock(&generate_mutex);
-	pthread_cond_signal(&generate_cond);
+	wg_send(workg, &(Work){
+		.x = x,
+		.y = y, 
+		.z = z	
+	});
 }
 
 void
@@ -194,33 +157,11 @@ world_render()
 	}
 }
 
-void *
-chunk_worker_func()
+void
+chunk_worker_func(WorkGroup *wg)
 {
-	while(true) {
-		Work my_work;
-
-		if(!running) {
-			return NULL;
-		}
-
-		pthread_mutex_lock(&generate_mutex);
-		while(work_size == 0) {
-			if(!running) {
-				pthread_mutex_unlock(&generate_mutex);
-				return NULL;
-			}
-			pthread_cond_wait(&generate_cond, &generate_mutex);
-		}
-		my_work = work[work_begin];
-		work_begin++;
-		work_size --;
-		if(work_begin >= MAX_WORK) {
-			work_begin = 0;
-		}
-		pthread_mutex_unlock(&generate_mutex);
-		pthread_cond_signal(&generate_cond);
-
+	Work my_work;
+	while(wg_recv(wg, &my_work)) {
 		if(find_chunk(my_work.x, my_work.y, my_work.z))
 			continue;
 		
@@ -237,7 +178,6 @@ chunk_worker_func()
 		chunk_randomize(chunk);
 		chunk->state = READY;
 	}
-	return NULL;
 }
 
 void
