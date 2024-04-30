@@ -76,8 +76,8 @@ main()
 	if(glewInit() != GLEW_OK)
 		return -3;
 
-	chunk_render_init();
 	world_init();
+	chunk_render_init();
 
 	player.yaw = 0.0;
 	player.pitch = 0.0;
@@ -98,9 +98,8 @@ main()
 		glfwGetWindowSize(window, &w, &h);
 		glViewport(0, 0, w, h);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		chunk_render_set_camera(player.eye_position, player.camera_view, (float)w/h);
-
-		world_render();
+		chunk_render_set_camera(player.eye_position, player.camera_view, (float)w/h, 16);
+		chunk_render();
 
 		glfwSwapBuffers(window);
 		glfwPollEvents();
@@ -108,8 +107,9 @@ main()
 		while(glGetError() != GL_NO_ERROR);
 	}
 
-	world_terminate();
 	chunk_render_terminate();
+	world_terminate();
+
 
 	glfwDestroyWindow(window);
 	glfwTerminate();
@@ -222,12 +222,11 @@ player_update(Player *player, float delta)
 	int chunk_z = (int)floorf(player->position[2]) & CHUNK_MASK;
 	
 	if(chunk_x != player->old_chunk_x || chunk_y != player->old_chunk_y || chunk_z != player->old_chunk_z) {
-		world_set_load_radius(chunk_x, 0, chunk_z, 128);
-		world_set_render_radius(chunk_x, chunk_y, chunk_z, 32);
-
 		player->old_chunk_x = chunk_x;
 		player->old_chunk_y = chunk_y;
 		player->old_chunk_z = chunk_z;
+
+		world_set_load_border(chunk_x, chunk_y, chunk_z, 256);
 	}
 }
 
@@ -254,6 +253,7 @@ mouse_click_callback(GLFWwindow *window, int button, int action, int mods)
 		while(world_raycast(&rw)) {
 			if(rw.block > 0) {
 				world_set_block(rw.position[0], rw.position[1], rw.position[2], BLOCK_NULL);
+				chunk_render_request_update_block(rw.position[0], rw.position[1], rw.position[2]);
 				break;
 			}
 		}
@@ -267,6 +267,7 @@ mouse_click_callback(GLFWwindow *window, int button, int action, int mods)
 
 				if(world_get_block(block[0], block[1], block[2]) == BLOCK_NULL) {
 					world_set_block(block[0], block[1], block[2], BLOCK_DIRT);
+					chunk_render_request_update_block(block[0], block[1], block[2]);
 				}
 				break;
 			}
