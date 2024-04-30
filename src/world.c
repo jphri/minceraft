@@ -261,13 +261,16 @@ world_get_block(int x, int y, int z)
 	int chunk_z = z & CHUNK_MASK;
 
 	Chunk *ch = find_chunk(chunk_x, chunk_y, chunk_z);
-	if(!ch)
-		return BLOCK_UNLOADED;
+	if(!ch) {
+		world_enqueue_load(chunk_x, chunk_y, chunk_z);
+		/* spinlock */
+		while((ch = find_chunk(chunk_x, chunk_y, chunk_z)) == NULL);
+	}
 
 	x &= BLOCK_MASK;
 	y &= BLOCK_MASK;
 	z &= BLOCK_MASK;
-
+	
 	return ch->blocks[z][y][x];
 }
 

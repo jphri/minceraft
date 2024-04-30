@@ -51,10 +51,6 @@ static void error_callback(int errcode, const char *msg);
 static void mouse_click_callback(GLFWwindow *window, int button, int action, int mods);
 static void keyboard_callback(GLFWwindow *window, int scan, int key, int action, int mods);
 
-static void spiral_load(int x, int y, int z, int range);
-
-
-
 static GLFWwindow *window;
 
 static Player player;
@@ -226,7 +222,6 @@ player_update(Player *player, float delta)
 	int chunk_z = (int)floorf(player->position[2]) & CHUNK_MASK;
 	
 	if(chunk_x != player->old_chunk_x || chunk_y != player->old_chunk_y || chunk_z != player->old_chunk_z) {
-		spiral_load(chunk_x, 0, chunk_z, 128);
 		world_set_load_radius(chunk_x, 0, chunk_z, 128);
 		world_set_render_radius(chunk_x, chunk_y, chunk_z, 32);
 
@@ -289,29 +284,5 @@ keyboard_callback(GLFWwindow *window, int key, int scan, int action, int mods)
 	
 	if(key == GLFW_KEY_ESCAPE) {
 		locking = false;
-	}
-}
-
-void
-spiral_load(int x, int y, int z, int size)
-{
-	size *= 2;
-	size /= CHUNK_SIZE;
-	int sign = 1;
-	world_enqueue_load(x, y, z);
-	for(int row = 1; row < size; row++) {
-		for(int k = 0; k < row; k++) {
-			x += sign * CHUNK_SIZE;
-			world_enqueue_load(x, y, z);
-		}
-		for(int k = 0; k < row; k++) {
-			z += -sign * CHUNK_SIZE;
-			world_enqueue_load(x, y, z);
-		}
-		sign *= -1;
-	}
-	for(int k = 0; k < size - 1; k++) {
-		x += sign * CHUNK_SIZE;
-		world_enqueue_load(x, y, z);
 	}
 }
