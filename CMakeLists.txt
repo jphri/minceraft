@@ -4,9 +4,14 @@ project(cubegame)
 add_subdirectory(lib/stb)
 add_subdirectory(lib/linmath)
 
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+
 find_library(GLFW glfw REQUIRED)
 find_library(GLEW GLEW REQUIRED)
 find_library(OPENGL OpenGL REQUIRED)
+find_package(Threads REQUIRED)
+
+set(CMAKE_C_FLAGS "-O0 -Wall -Wextra")
 
 file(GLOB src "src/*.c")
 add_custom_target(COPY_SHADERS ALL
@@ -29,4 +34,4 @@ endif()
 
 add_executable(minceraft ${src})
 add_dependencies(minceraft COPY_SHADERS COPY_TEXTURES)
-target_link_libraries(minceraft PRIVATE ${LIBRARIES})
+target_link_libraries(minceraft PRIVATE ${LIBRARIES} Threads::Threads)
