@@ -6,8 +6,10 @@
 #define BLOCK_MASK  (CHUNK_SIZE - 1)
 #define CHUNK_MASK  (~BLOCK_MASK)
 
+#include "util.h"
 #include <linmath.h>
 #include <stdbool.h>
+
 
 typedef enum {
 	BLOCK_NULL,
@@ -31,6 +33,7 @@ typedef enum {
 	TOP,
 } Direction;
 
+
 typedef struct Chunk Chunk;
 struct Chunk {
 	int blocks[CHUNK_SIZE][CHUNK_SIZE][CHUNK_SIZE];
@@ -46,6 +49,12 @@ struct Chunk {
 
 	bool free;
 };
+
+typedef struct {
+	Chunk *chunk;
+	ArrayBuffer solid_faces;
+	ArrayBuffer water_faces;
+} ChunkFaceWork;
 
 typedef struct RaycastWorld RaycastWorld;
 struct RaycastWorld {

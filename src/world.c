@@ -23,6 +23,7 @@ typedef struct {
 
 static void chunk_randomize(Chunk *chunk);
 static void chunk_worker_func(WorkGroup *wg);
+static void faces_worker_func(WorkGroup *wg);
 static Chunk *find_chunk(int x, int y, int z);
 static Chunk *find_free_chunk();
 static Chunk *allocate_chunk();
@@ -42,6 +43,8 @@ static int max_chunk_id;
 static pthread_mutex_t chunk_mutex;
 
 static WorkGroup *workg;
+static WorkGroup *facesg;
+static WorkGroup *glbuffersg;
 
 static int cx, cy, cz, cradius;
 static int rx, ry, rz, rradius;
@@ -59,6 +62,8 @@ world_init()
 	}
 
 	workg = wg_init(chunk_worker_func, sizeof(Work), MAX_WORK, 4);
+	facesg = wg_init(faces_worker_func, sizeof(ChunkFaceWork), MAX_WORK, 4);
+	glbuffersg = wg_init(NULL, sizeof(ChunkFaceWork), MAX_WORK, 0);
 }
 
 void
@@ -66,6 +71,8 @@ world_terminate()
 {
 	running = false;
 	wg_terminate(workg);
+	wg_terminate(facesg);
+	wg_terminate(glbuffersg);
 	pthread_mutex_destroy(&chunk_mutex);
 	free(chunks);
 }
@@ -93,6 +100,14 @@ world_enqueue_unload(int x, int y, int z)
 void
 world_render()
 {
+	ChunkFaceWork w;
+	while(wg_recv(glbuffersg, &w)) {
+		chunk_render_generate_buffers(&w);
+		arrbuf_free(&w.solid_faces);
+		arrbuf_free(&w.water_faces);
+		w.chunk->state = READY;
+	}
+
 	chunk_render_update();
 	for(Chunk *chunk = chunks;
 		chunk < chunks + max_chunk_id + 1;
@@ -108,10 +123,6 @@ world_render()
 		if(dx > cradius || dy > cradius || dz > cradius) {
 			deallocate_chunk(chunk);
 			continue;
-		}
-		
-		if(!chunk->chunk_vbo) {
-			chunk_render_generate_buffers(chunk);
 		}
 
 		dx = abs(chunk->x - rx);
@@ -139,10 +150,6 @@ world_render()
 		if(dx > cradius || dy > cradius || dz > cradius) {
 			deallocate_chunk(chunk);
 			continue;
-		}
-		
-		if(!chunk->chunk_vbo) {
-			chunk_render_generate_buffers(chunk);
 		}
 
 		dx = abs(chunk->x - rx);
@@ -174,9 +181,23 @@ chunk_worker_func(WorkGroup *wg)
 		chunk->chunk_vbo = 0;
 		chunk->chunk_vao = 0;
 		chunk->vert_count = 0;
-
 		chunk_randomize(chunk);
-		chunk->state = READY;
+
+		wg_send(facesg, &(ChunkFaceWork){
+			.chunk = chunk
+		});
+	}
+}
+
+void
+faces_worker_func(WorkGroup *wg)
+{
+	ChunkFaceWork w;
+	while(wg_recv(wg, &w)) {
+		arrbuf_init(&w.solid_faces);
+		arrbuf_init(&w.water_faces);
+		chunk_render_generate_faces(w.chunk, &w);
+		wg_send(glbuffersg, &w);
 	}
 }
 
@@ -266,17 +287,10 @@ world_set_block(int x, int y, int z, Block block)
 	z &= BLOCK_MASK;
 
 	ch->blocks[z][y][x] = block;
-	if(glIsBuffer(ch->chunk_vbo)) {
-		/* this will trigger a update */
-		glDeleteBuffers(1, &ch->chunk_vbo);
-		glDeleteVertexArrays(1, &ch->chunk_vao);
+	ChunkFaceWork face;
+	face.chunk = ch;
 
-		glDeleteBuffers(1, &ch->water_vbo);
-		glDeleteVertexArrays(1, &ch->water_vao);
-
-		ch->chunk_vao = 0;
-		ch->chunk_vbo = 0;
-	}
+	wg_send(facesg, &face);
 }
 
 RaycastWorld

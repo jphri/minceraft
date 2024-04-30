@@ -6,6 +6,7 @@
 #include "util.h"
 #include "glutil.h"
 #include "chunk_renderer.h"
+#include "world.h"
 
 typedef struct {
 	unsigned int texture;
@@ -162,14 +163,8 @@ chunk_render_render_water_chunk(Chunk *c)
 }
 
 void
-chunk_render_generate_buffers(Chunk *chunk)
+chunk_render_generate_faces(Chunk *chunk, ChunkFaceWork *w)
 {
-	ArrayBuffer buffer;
-	ArrayBuffer water_buffer;
-
-	arrbuf_init(&buffer);
-	arrbuf_init(&water_buffer);
-
 	for(int z = 0; z < CHUNK_SIZE; z++)
 		for(int y = 0; y < CHUNK_SIZE; y++)
 			for(int x = 0; x < CHUNK_SIZE; x++) {
@@ -179,29 +174,35 @@ chunk_render_generate_buffers(Chunk *chunk)
 
 				switch(chunk->blocks[z][y][x]) {
 				case BLOCK_WATER:
-					chunk_generate_face_water(chunk, x, y, z, &water_buffer);
+					chunk_generate_face_water(chunk, x, y, z, &w->water_faces);
 					break;
 				default:
-					chunk_generate_face(chunk, x, y, z, &buffer);
+					chunk_generate_face(chunk, x, y, z, &w->solid_faces);
 				}
 			}
-	chunk->vert_count = arrbuf_length(&buffer, sizeof(Vertex));
-	chunk->water_vert_count = arrbuf_length(&water_buffer, sizeof(Vertex));
+}
 
-	chunk->chunk_vbo = ugl_create_buffer(GL_STATIC_DRAW, buffer.size, buffer.data);
+void
+chunk_render_generate_buffers(ChunkFaceWork *w)
+{
+	Chunk *chunk = w->chunk;
+	chunk->vert_count = arrbuf_length(&w->solid_faces, sizeof(Vertex));
+	chunk->water_vert_count = arrbuf_length(&w->water_faces, sizeof(Vertex));
+
+	if(chunk->chunk_vbo) glDeleteBuffers(1, &chunk->chunk_vbo);
+	if(chunk->chunk_vao) glDeleteVertexArrays(1, &chunk->chunk_vao);
+
+	chunk->chunk_vbo = ugl_create_buffer(GL_STATIC_DRAW, w->solid_faces.size, w->solid_faces.data);
 	chunk->chunk_vao = ugl_create_vao(2, (VaoSpec[]){
 		{ 0, 3, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, position), 0, chunk->chunk_vbo },
 		{ 1, 2, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, texcoord), 0, chunk->chunk_vbo },
 	});
 
-	chunk->water_vbo = ugl_create_buffer(GL_STATIC_DRAW, water_buffer.size, water_buffer.data);
+	chunk->water_vbo = ugl_create_buffer(GL_STATIC_DRAW, w->water_faces.size, w->water_faces.data);
 	chunk->water_vao = ugl_create_vao(2, (VaoSpec[]){
 		{ 0, 3, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, position), 0, chunk->water_vbo },
 		{ 1, 2, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, texcoord), 0, chunk->water_vbo },
 	});
-
-	arrbuf_free(&buffer);
-	arrbuf_free(&water_buffer);
 }
 
 bool
