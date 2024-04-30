@@ -23,11 +23,10 @@ typedef struct {
 
 static void chunk_randomize(Chunk *chunk);
 static void chunk_worker_func(WorkGroup *wg);
-static Chunk *find_chunk(int x, int y, int z);
-static Chunk *find_complete_chunk(int x, int y, int z);
+static volatile Chunk *find_chunk(int x, int y, int z);
+static volatile Chunk *find_complete_chunk(int x, int y, int z);
 static Chunk *find_free_chunk();
 static Chunk *allocate_chunk();
-static void   deallocate_chunk(Chunk *c);
 
 static BlockProperties bprop[] = {
 	[BLOCK_NULL]  = { .is_transparent = true },
@@ -38,7 +37,7 @@ static BlockProperties bprop[] = {
 static int running;
 
 static Chunk *chunks;
-static int max_chunk_id;
+static volatile int max_chunk_id;
 
 static pthread_mutex_t chunk_mutex;
 
@@ -81,16 +80,6 @@ world_enqueue_load(int x, int y, int z)
 }
 
 void
-world_enqueue_unload(int x, int y, int z)
-{
-	Chunk *chunk = find_chunk(x, y, z);
-	if(!chunk)
-		return;
-	
-	deallocate_chunk(chunk);
-}
-
-void
 chunk_worker_func(WorkGroup *wg)
 {
 	Work my_work;
@@ -123,10 +112,10 @@ chunk_randomize(Chunk *chunk)
 	}
 }
 
-Chunk *
+volatile Chunk *
 find_chunk(int x, int y, int z)
 {
-	Chunk *c = chunks;
+	volatile Chunk *c = chunks;
 	for(; c < chunks + max_chunk_id + 1; c++) {
 		if(!c->free && c->x == x && c->y == y && c->z == z)
 			return c;
@@ -179,7 +168,7 @@ world_get_block(int x, int y, int z)
 	int chunk_y = y & CHUNK_MASK;
 	int chunk_z = z & CHUNK_MASK;
 
-	Chunk *ch = find_chunk(chunk_x, chunk_y, chunk_z);
+	volatile Chunk *ch = find_chunk(chunk_x, chunk_y, chunk_z);
 	if(!ch) {
 		world_enqueue_load(chunk_x, chunk_y, chunk_z);
 		/* spinlock */
@@ -200,7 +189,7 @@ world_set_block(int x, int y, int z, Block block)
 	int chunk_y = y & CHUNK_MASK;
 	int chunk_z = z & CHUNK_MASK;
 
-	Chunk *ch = find_chunk(chunk_x, chunk_y, chunk_z);
+	volatile Chunk *ch = find_chunk(chunk_x, chunk_y, chunk_z);
 	if(!ch) {
 		world_enqueue_load(chunk_x, chunk_y, chunk_z);
 		/* spinlock */
@@ -314,19 +303,10 @@ block_properties(Block b)
 	return &bprop[b];
 }
 
-void
-deallocate_chunk(Chunk *chunk)
-{
-	pthread_mutex_lock(&chunk_mutex);
-	chunk->free = true;
-	count_chunks--;
-	pthread_mutex_unlock(&chunk_mutex);
-}
-
-Chunk *
+volatile Chunk *
 find_complete_chunk(int x, int y, int z)
 {
-	Chunk *c = find_chunk(x, y, z);
+	volatile Chunk *c = find_chunk(x, y, z);
 	if(c && c->state == READY)
 		return c;
 	return NULL;

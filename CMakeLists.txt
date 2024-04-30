@@ -11,7 +11,7 @@ find_library(GLEW GLEW REQUIRED)
 find_library(OPENGL OpenGL REQUIRED)
 find_package(Threads REQUIRED)
 
-set(CMAKE_C_FLAGS "-O0 -Wall -Wextra")
+set(CMAKE_C_FLAGS "-O3 -Wall -Wextra -pedantic")
 
 file(GLOB src "src/*.c")
 add_custom_target(COPY_SHADERS ALL

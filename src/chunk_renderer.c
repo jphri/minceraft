@@ -57,10 +57,8 @@ typedef struct {
 static GraphicsChunk chunks[MAX_CHUNKS];
 static int max_chunk_id;
 
-static GraphicsChunk *find_chunk(int x, int y, int z);
 static GraphicsChunk *find_or_allocate_chunk(int x, int y, int z);
 static GraphicsChunk *allocate_chunk_except(int x, int y, int z);
-static GraphicsChunk *find_free_chunk();
 
 static bool load_texture(Texture *texture, const char *path);
 static void get_cube_face(Texture *texture, int tex_id, vec2 min, vec2 max);
@@ -577,7 +575,6 @@ chunk_render()
 void
 faces_worker_func(WorkGroup *wg)
 {
-	static int count = 0;
 	ChunkFaceWork w;
 	while(wg_recv(wg, &w)) {
 		switch(w.mode) {
@@ -597,17 +594,6 @@ faces_worker_func(WorkGroup *wg)
 		chunk_render_generate_faces(w.chunk, &w);
 		wg_send(glbuffersg, &w);
 	}
-}
-
-GraphicsChunk *
-find_chunk(int x, int y, int z)
-{
-	GraphicsChunk *c = chunks;
-	for(; c < chunks + MAX_CHUNKS; c++) {
-		if(!c->free && c->x == x && c->y == y && c->z == z)
-			return c;
-	}
-	return NULL;
 }
 
 GraphicsChunk *

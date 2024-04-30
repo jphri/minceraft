@@ -24,7 +24,7 @@ struct WorkGroup {
 	void *queue_begin, *queue_end;
 	size_t size, enqueued;
 	size_t elem_size;
-	bool terminated;
+	volatile bool terminated;
 
 	size_t worker_count;
 	void (*worker_func)(WorkGroup *);

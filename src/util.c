@@ -797,7 +797,7 @@ wg_init(void (*worker_func)(WorkGroup *), size_t work_data_size, size_t max_work
 	pthread_mutex_init(&wg->mtx, NULL);
 	pthread_cond_init(&wg->cond, NULL);
 
-	for(int i = 0; i < worker_count; i++) {
+	for(size_t i = 0; i < worker_count; i++) {
 		pthread_create(&wg->workers[i], NULL, worker_bootstrap, wg);
 	}
 
@@ -812,7 +812,7 @@ wg_terminate(WorkGroup *wg)
 	pthread_mutex_unlock(&wg->mtx);
 	pthread_cond_broadcast(&wg->cond);
 
-	for(int i = 0; i < wg->worker_count; i++)
+	for(size_t i = 0; i < wg->worker_count; i++)
 		pthread_join(wg->workers[i], NULL);
 	
 	free(wg->queue);
