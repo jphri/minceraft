@@ -267,16 +267,16 @@ void
 chunk_render_generate_buffers(ChunkFaceWork *w)
 {
 	GraphicsChunk *chunk = w->chunk;
-	if(chunk->chunk_vbo) {
+	if(glIsBuffer(chunk->chunk_vbo)) {
 		glDeleteBuffers(1, &chunk->chunk_vbo);
 		glDeleteVertexArrays(1, &chunk->chunk_vao);
+
+		glDeleteBuffers(1, &chunk->water_vbo);
+		glDeleteVertexArrays(1, &chunk->water_vao);
 	}
 
 	chunk->vert_count = arrbuf_length(&w->solid_faces, sizeof(Vertex));
 	chunk->water_vert_count = arrbuf_length(&w->water_faces, sizeof(Vertex));
-
-	if(chunk->chunk_vbo) glDeleteBuffers(1, &chunk->chunk_vbo);
-	if(chunk->chunk_vao) glDeleteVertexArrays(1, &chunk->chunk_vao);
 
 	chunk->chunk_vbo = ugl_create_buffer(GL_STATIC_DRAW, w->solid_faces.size, w->solid_faces.data);
 	chunk->chunk_vao = ugl_create_vao(2, (VaoSpec[]){
@@ -596,7 +596,6 @@ faces_worker_func(WorkGroup *wg)
 		arrbuf_init(&w.water_faces);
 		chunk_render_generate_faces(w.chunk, &w);
 		wg_send(glbuffersg, &w);
-
 	}
 }
 
