@@ -7,7 +7,6 @@
 #include <assert.h>
 
 #include "chunk_renderer.h"
-#include "cubegame.h"
 #include "util.h"
 #include "glutil.h"
 #include "linmath.h"
@@ -51,10 +50,6 @@ static void error_callback(int errcode, const char *msg);
 static void mouse_click_callback(GLFWwindow *window, int button, int action, int mods);
 static void keyboard_callback(GLFWwindow *window, int scan, int key, int action, int mods);
 
-static void spiral_load(int x, int y, int z, int range);
-
-
-
 static GLFWwindow *window;
 
 static Player player;
@@ -80,8 +75,8 @@ main()
 	if(glewInit() != GLEW_OK)
 		return -3;
 
-	chunk_render_init();
 	world_init();
+	chunk_render_init();
 
 	player.yaw = 0.0;
 	player.pitch = 0.0;
@@ -102,9 +97,8 @@ main()
 		glfwGetWindowSize(window, &w, &h);
 		glViewport(0, 0, w, h);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		chunk_render_set_camera(player.eye_position, player.camera_view, (float)w/h);
-
-		world_render();
+		chunk_render_set_camera(player.eye_position, player.camera_view, (float)w/h, 16);
+		chunk_render();
 
 		glfwSwapBuffers(window);
 		glfwPollEvents();
@@ -112,8 +106,9 @@ main()
 		while(glGetError() != GL_NO_ERROR);
 	}
 
-	world_terminate();
 	chunk_render_terminate();
+	world_terminate();
+
 
 	glfwDestroyWindow(window);
 	glfwTerminate();
@@ -226,13 +221,11 @@ player_update(Player *player, float delta)
 	int chunk_z = (int)floorf(player->position[2]) & CHUNK_MASK;
 	
 	if(chunk_x != player->old_chunk_x || chunk_y != player->old_chunk_y || chunk_z != player->old_chunk_z) {
-		spiral_load(chunk_x, 0, chunk_z, 128);
-		world_set_load_radius(chunk_x, 0, chunk_z, 128);
-		world_set_render_radius(chunk_x, chunk_y, chunk_z, 32);
-
 		player->old_chunk_x = chunk_x;
 		player->old_chunk_y = chunk_y;
 		player->old_chunk_z = chunk_z;
+
+		world_set_load_border(chunk_x, chunk_y, chunk_z, 256);
 	}
 }
 
@@ -259,6 +252,7 @@ mouse_click_callback(GLFWwindow *window, int button, int action, int mods)
 		while(world_raycast(&rw)) {
 			if(rw.block > 0) {
 				world_set_block(rw.position[0], rw.position[1], rw.position[2], BLOCK_NULL);
+				chunk_render_request_update_block(rw.position[0], rw.position[1], rw.position[2]);
 				break;
 			}
 		}
@@ -272,6 +266,7 @@ mouse_click_callback(GLFWwindow *window, int button, int action, int mods)
 
 				if(world_get_block(block[0], block[1], block[2]) == BLOCK_NULL) {
 					world_set_block(block[0], block[1], block[2], BLOCK_DIRT);
+					chunk_render_request_update_block(block[0], block[1], block[2]);
 				}
 				break;
 			}
@@ -289,29 +284,5 @@ keyboard_callback(GLFWwindow *window, int key, int scan, int action, int mods)
 	
 	if(key == GLFW_KEY_ESCAPE) {
 		locking = false;
-	}
-}
-
-void
-spiral_load(int x, int y, int z, int size)
-{
-	size *= 2;
-	size /= CHUNK_SIZE;
-	int sign = 1;
-	world_enqueue_load(x, y, z);
-	for(int row = 1; row < size; row++) {
-		for(int k = 0; k < row; k++) {
-			x += sign * CHUNK_SIZE;
-			world_enqueue_load(x, y, z);
-		}
-		for(int k = 0; k < row; k++) {
-			z += -sign * CHUNK_SIZE;
-			world_enqueue_load(x, y, z);
-		}
-		sign *= -1;
-	}
-	for(int k = 0; k < size - 1; k++) {
-		x += sign * CHUNK_SIZE;
-		world_enqueue_load(x, y, z);
 	}
 }

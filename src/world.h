@@ -6,8 +6,10 @@
 #define BLOCK_MASK  (CHUNK_SIZE - 1)
 #define CHUNK_MASK  (~BLOCK_MASK)
 
+#include "util.h"
 #include <linmath.h>
 #include <stdbool.h>
+
 
 typedef enum {
 	BLOCK_NULL,
@@ -34,12 +36,6 @@ typedef enum {
 typedef struct Chunk Chunk;
 struct Chunk {
 	int blocks[CHUNK_SIZE][CHUNK_SIZE][CHUNK_SIZE];
-	unsigned int chunk_vbo, chunk_vao;
-	unsigned int vert_count;
-
-	unsigned int water_vbo, water_vao;
-	unsigned int water_vert_count;
-
 	int state;
 	int x, y, z;
 	Chunk *genqueue_next;
@@ -63,7 +59,6 @@ typedef struct {
 
 void world_init();
 void world_terminate();
-void world_render();
 
 void world_enqueue_load(int x, int y, int z);
 void world_enqueue_unload(int x, int y, int z);
@@ -77,7 +72,6 @@ int          world_raycast(RaycastWorld *rw);
 void block_face_to_dir(Direction dir, vec3 out);
 const BlockProperties *block_properties(Block block);
 
-void world_set_load_radius(int x, int y, int z, int radius);
-void world_set_render_radius(int x, int y, int z, int radius);
+void world_set_load_border(int x, int y, int z, int radius);
 
 #endif

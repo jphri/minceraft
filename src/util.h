@@ -16,8 +16,22 @@ typedef struct ObjectPool ObjectPool;
 typedef struct RelPtr RelPtr;
 typedef struct Allocator Allocator;
 typedef struct FileBuffer FileBuffer;
-
+typedef struct WorkGroup WorkGroup;
 typedef uint_fast32_t ObjectID;
+
+struct WorkGroup {
+	void *queue;
+	void *queue_begin, *queue_end;
+	size_t size, enqueued;
+	size_t elem_size;
+	volatile bool terminated;
+
+	size_t worker_count;
+	void (*worker_func)(WorkGroup *);
+	pthread_mutex_t mtx;
+	pthread_cond_t cond;
+	pthread_t workers[];
+};
 
 struct Allocator {
 	void *userptr;
@@ -164,6 +178,11 @@ int  utf8_decode(StrView span);
 void utf8_advance(StrView *span);
 int  utf8_multibyte_next(StrView view, int from);
 int  utf8_multibyte_prev(StrView view, int from);
+
+WorkGroup *wg_init(void (*worker_func)(WorkGroup *wg), size_t work_data_size, size_t max_work_count, size_t worker_count);
+void       wg_terminate(WorkGroup *wg);
+bool       wg_send(WorkGroup *wg, void *work_data);
+bool       wg_recv(WorkGroup *wg, void *data_in);
 
 static inline void *to_ptr(RelPtr ptr) {
 	return ((unsigned char*)*ptr.base_pointer) + ptr.offset;
