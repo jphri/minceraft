@@ -58,7 +58,7 @@ world_init()
 		chunks[i].state = READY;
 	}
 	memset(chunkmap, 0, sizeof(chunkmap));
-
+	pthread_mutex_init(&chunk_mutex, NULL);
 	workg = wg_init(chunk_worker_func, sizeof(Work), MAX_WORK, 4);
 }
 
@@ -105,7 +105,7 @@ chunk_randomize(Chunk *chunk)
 	for(int z = 0; z < CHUNK_SIZE; z++)
 	for(int y = 0; y < CHUNK_SIZE; y++)
 	for(int x = 0; x < CHUNK_SIZE; x++) {
-		if(!(rand() & 15)) {
+		if(!(rand() & 15) && x > 1 && x < 14 && z > 1 && z < 14) {
 			chunk->blocks[x][y][z] = rand() % (BLOCK_LAST - BLOCK_GRASS) + BLOCK_GRASS;
 		} else {
 			chunk->blocks[x][y][z] = 0;
@@ -304,6 +304,7 @@ allocate_chunk_except(int x, int y, int z)
 			pthread_mutex_unlock(&chunk_mutex);
 			return NULL;
 		}
+		c = c->next;
 	}
 
 	Chunk *free_chunk = NULL;
@@ -355,6 +356,7 @@ find_complete_chunk(int x, int y, int z)
 			pthread_mutex_unlock(&chunk_mutex);
 			return c;
 		}
+		c = c->next;
 	}
 	pthread_mutex_unlock(&chunk_mutex);
 	return NULL;
