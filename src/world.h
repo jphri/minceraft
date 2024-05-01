@@ -1,7 +1,8 @@
 #ifndef WORLD_H
 #define WORLD_H
 
-#define CHUNK_SIZE 16
+#define BLOCK_BITS  4
+#define CHUNK_SIZE  (1 << BLOCK_BITS)
 #define LAST_BLOCK  (CHUNK_SIZE - 1)
 #define BLOCK_MASK  (CHUNK_SIZE - 1)
 #define CHUNK_MASK  (~BLOCK_MASK)
@@ -38,9 +39,8 @@ struct Chunk {
 	int blocks[CHUNK_SIZE][CHUNK_SIZE][CHUNK_SIZE];
 	int state;
 	int x, y, z;
-	Chunk *genqueue_next;
-
 	bool free;
+	Chunk *next, *prev;
 };
 
 typedef struct RaycastWorld RaycastWorld;
@@ -73,5 +73,7 @@ void block_face_to_dir(Direction dir, vec3 out);
 const BlockProperties *block_properties(Block block);
 
 void world_set_load_border(int x, int y, int z, int radius);
+
+uint32_t chunk_coord_hash(int x, int y, int z);
 
 #endif

@@ -97,7 +97,7 @@ main()
 		glfwGetWindowSize(window, &w, &h);
 		glViewport(0, 0, w, h);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		chunk_render_set_camera(player.eye_position, player.camera_view, (float)w/h, 16);
+		chunk_render_set_camera(player.eye_position, player.camera_view, (float)w/h, 64);
 		chunk_render();
 
 		glfwSwapBuffers(window);

@@ -26,6 +26,9 @@ static Chunk *allocate_chunk_except(int x, int y, int z);
 static void chunk_randomize(Chunk *chunk);
 static void chunk_worker_func(WorkGroup *wg);
 
+static void insert_chunk(Chunk *c);
+static void remove_chunk(Chunk *c);
+
 static BlockProperties bprop[] = {
 	[BLOCK_NULL]  = { .is_transparent = true },
 	[BLOCK_GLASS] = { .is_transparent = true }, 
@@ -34,6 +37,7 @@ static BlockProperties bprop[] = {
 
 static int running;
 
+static Chunk *chunkmap[65536];
 static Chunk *chunks;
 static volatile int max_chunk_id;
 
@@ -53,7 +57,8 @@ world_init()
 		chunks[i].free = true;
 		chunks[i].state = READY;
 	}
-
+	memset(chunkmap, 0, sizeof(chunkmap));
+	pthread_mutex_init(&chunk_mutex, NULL);
 	workg = wg_init(chunk_worker_func, sizeof(Work), MAX_WORK, 4);
 }
 
@@ -100,7 +105,7 @@ chunk_randomize(Chunk *chunk)
 	for(int z = 0; z < CHUNK_SIZE; z++)
 	for(int y = 0; y < CHUNK_SIZE; y++)
 	for(int x = 0; x < CHUNK_SIZE; x++) {
-		if(rand() & 1) {
+		if(!(rand() & 15) && x > 1 && x < 14 && z > 1 && z < 14) {
 			chunk->blocks[x][y][z] = rand() % (BLOCK_LAST - BLOCK_GRASS) + BLOCK_GRASS;
 		} else {
 			chunk->blocks[x][y][z] = 0;
@@ -291,22 +296,32 @@ allocate_chunk_except(int x, int y, int z)
 	*/
 
 	pthread_mutex_lock(&chunk_mutex);
-	Chunk *free_chunk = NULL;
-	Chunk *c = chunks;
-	for(; c < chunks + max_chunk_id + 1; c++) {
-		if(!c->free && c->x == x && c->y == y&& c->z == z) {
+	Chunk *c;
+	uint32_t hash = chunk_coord_hash(x, y, z);
+	c = chunkmap[hash];
+	while(c) {
+		if(!c->free && c->x == x && c->y == y && c->z == z) {
 			pthread_mutex_unlock(&chunk_mutex);
 			return NULL;
 		}
-		else if(c->free) {
+		c = c->next;
+	}
+
+	Chunk *free_chunk = NULL;
+	c = chunks;
+	for(; c < chunks + max_chunk_id + 1; c++) {
+		if(c->free) {
 			free_chunk = c;
+			break;
 		} else {
 			/* if it is too far way, treat as a freed too */
 			int dx = abs(c->x - cx);
 			int dy = abs(c->y - cy);
 			int dz = abs(c->z - cz);
 			if(dx > cradius || dy > cradius || dz > cradius) {
+				remove_chunk(c);
 				free_chunk = c;
+				break;
 			}
 		}
 	}
@@ -317,11 +332,13 @@ allocate_chunk_except(int x, int y, int z)
 		}
 		free_chunk = c;
 		max_chunk_id ++;
+		printf("max chunk id: %d\n", max_chunk_id);
 	}
 	free_chunk->x = x;
 	free_chunk->y = y;
 	free_chunk->z = z;
 	free_chunk->free = false;
+	insert_chunk(c);
 	pthread_mutex_unlock(&chunk_mutex);
 
 	return free_chunk;
@@ -331,13 +348,58 @@ Chunk *
 find_complete_chunk(int x, int y, int z)
 {
 	pthread_mutex_lock(&chunk_mutex);
-	Chunk *c = chunks;
-	for(; c < chunks + max_chunk_id + 1; c++) {
-		if(!c->free && c->state == READY && c->x == x && c->y == y&& c->z == z) {
+	Chunk *c;
+	uint32_t hash = chunk_coord_hash(x, y, z);
+	c = chunkmap[hash];
+	while(c) {
+		if(!c->free && c->state == READY && c->x == x && c->y == y && c->z == z) {
 			pthread_mutex_unlock(&chunk_mutex);
 			return c;
 		}
+		c = c->next;
 	}
 	pthread_mutex_unlock(&chunk_mutex);
 	return NULL;
+}
+
+uint32_t
+chunk_coord_hash(int x, int y, int z)
+{
+	#define X_MUL 0xFEE1DEAD
+	#define Y_MUL 0xCAFEBABE
+	#define Z_MUL 0xDEADBEEF
+	#define INCR  0x0BABAB0E
+
+	x >>= BLOCK_BITS;
+	y >>= BLOCK_BITS;
+	z >>= BLOCK_BITS;
+	x = x * X_MUL + INCR;
+	y = y * Y_MUL + INCR;
+	z = z * Z_MUL + INCR;
+
+	uint32_t r = x ^ y ^ z;
+	return (r & 0xFFFF) ^ (r >> 16);
+}
+
+void
+insert_chunk(Chunk *c)
+{
+	uint32_t hash = chunk_coord_hash(c->x, c->y, c->z);
+	c->prev = NULL;
+	c->next = chunkmap[hash];
+	if(chunkmap[hash])
+		chunkmap[hash]->prev = c;
+	chunkmap[hash] = c;
+}
+
+void
+remove_chunk(Chunk *c)
+{
+	uint32_t hash = chunk_coord_hash(c->x, c->y, c->z);
+	if(c->prev)
+		c->prev->next = c->next;
+	if(c->next)
+		c->next->prev = c->prev;
+	if(chunkmap[hash] == c)
+		chunkmap[hash] = c->next;
 }
