@@ -7,7 +7,6 @@
 #include <assert.h>
 
 #include "chunk_renderer.h"
-#include "cubegame.h"
 #include "util.h"
 #include "glutil.h"
 #include "linmath.h"

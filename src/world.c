@@ -22,7 +22,6 @@ typedef struct {
 #define NUM_WORKERS 4
 
 static Chunk *find_complete_chunk(int x, int y, int z);
-static Chunk *find_or_allocate_chunk(int x, int y, int z);
 static Chunk *allocate_chunk_except(int x, int y, int z);
 static void chunk_randomize(Chunk *chunk);
 static void chunk_worker_func(WorkGroup *wg);
@@ -43,7 +42,6 @@ static pthread_mutex_t chunk_mutex;
 static WorkGroup *workg;
 
 static int cx, cy, cz, cradius;
-static int count_chunks;
 
 void
 world_init()
