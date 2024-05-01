@@ -21,12 +21,11 @@ typedef struct {
 #define MAX_WORK 1024
 #define NUM_WORKERS 4
 
+static Chunk *find_complete_chunk(int x, int y, int z);
+static Chunk *find_or_allocate_chunk(int x, int y, int z);
+static Chunk *allocate_chunk_except(int x, int y, int z);
 static void chunk_randomize(Chunk *chunk);
 static void chunk_worker_func(WorkGroup *wg);
-static volatile Chunk *find_chunk(int x, int y, int z);
-static volatile Chunk *find_complete_chunk(int x, int y, int z);
-static Chunk *find_free_chunk();
-static Chunk *allocate_chunk();
 
 static BlockProperties bprop[] = {
 	[BLOCK_NULL]  = { .is_transparent = true },
@@ -84,10 +83,9 @@ chunk_worker_func(WorkGroup *wg)
 {
 	Work my_work;
 	while(wg_recv(wg, &my_work)) {
-		if(find_chunk(my_work.x, my_work.y, my_work.z))
+		Chunk *chunk = allocate_chunk_except(my_work.x, my_work.y, my_work.z);
+		if(!chunk)
 			continue;
-		
-		Chunk *chunk = allocate_chunk();
 		chunk->state = GENERATING;
 
 		chunk->x = my_work.x & CHUNK_MASK;
@@ -112,17 +110,6 @@ chunk_randomize(Chunk *chunk)
 	}
 }
 
-volatile Chunk *
-find_chunk(int x, int y, int z)
-{
-	volatile Chunk *c = chunks;
-	for(; c < chunks + max_chunk_id + 1; c++) {
-		if(!c->free && c->x == x && c->y == y && c->z == z)
-			return c;
-	}
-	return NULL;
-}
-
 Chunk *
 find_free_chunk()
 {
@@ -144,23 +131,6 @@ find_free_chunk()
 	return NULL;
 }
 
-Chunk *
-allocate_chunk()
-{
-	pthread_mutex_lock(&chunk_mutex);
-	Chunk *c = find_free_chunk();
-	if(!c) {
-		return NULL;
-	}
-	c->free = false;
-	if(c - chunks > max_chunk_id)
-		max_chunk_id = (c - chunks);
-	count_chunks++;
-	pthread_mutex_unlock(&chunk_mutex);
-
-	return c;
-}
-
 Block
 world_get_block(int x, int y, int z)
 {
@@ -168,7 +138,7 @@ world_get_block(int x, int y, int z)
 	int chunk_y = y & CHUNK_MASK;
 	int chunk_z = z & CHUNK_MASK;
 
-	volatile Chunk *ch = find_chunk(chunk_x, chunk_y, chunk_z);
+	volatile Chunk *ch = find_complete_chunk(chunk_x, chunk_y, chunk_z);
 	if(!ch) {
 		world_enqueue_load(chunk_x, chunk_y, chunk_z);
 		/* spinlock */
@@ -189,7 +159,7 @@ world_set_block(int x, int y, int z, Block block)
 	int chunk_y = y & CHUNK_MASK;
 	int chunk_z = z & CHUNK_MASK;
 
-	volatile Chunk *ch = find_chunk(chunk_x, chunk_y, chunk_z);
+	volatile Chunk *ch = find_complete_chunk(chunk_x, chunk_y, chunk_z);
 	if(!ch) {
 		world_enqueue_load(chunk_x, chunk_y, chunk_z);
 		/* spinlock */
@@ -303,15 +273,6 @@ block_properties(Block b)
 	return &bprop[b];
 }
 
-volatile Chunk *
-find_complete_chunk(int x, int y, int z)
-{
-	volatile Chunk *c = find_chunk(x, y, z);
-	if(c && c->state == READY)
-		return c;
-	return NULL;
-}
-
 void
 world_set_load_border(int x, int y, int z, int radius)
 {
@@ -319,4 +280,66 @@ world_set_load_border(int x, int y, int z, int radius)
 	cy = y;
 	cz = z;
 	cradius = radius;
+}
+
+Chunk *
+allocate_chunk_except(int x, int y, int z)
+{
+	/* 
+		this reduces the amount of iterations to one,
+		as before i would require to look up for all chunks
+		first to check if the chunk exists, 
+		then start over and look for a free chunk
+	*/
+
+	pthread_mutex_lock(&chunk_mutex);
+	Chunk *free_chunk = NULL;
+	Chunk *c = chunks;
+	for(; c < chunks + max_chunk_id + 1; c++) {
+		if(!c->free && c->x == x && c->y == y&& c->z == z) {
+			pthread_mutex_unlock(&chunk_mutex);
+			return NULL;
+		}
+		else if(c->free) {
+			free_chunk = c;
+		} else {
+			/* if it is too far way, treat as a freed too */
+			int dx = abs(c->x - cx);
+			int dy = abs(c->y - cy);
+			int dz = abs(c->z - cz);
+			if(dx > cradius || dy > cradius || dz > cradius) {
+				free_chunk = c;
+			}
+		}
+	}
+	if(!free_chunk) {
+		if(c >= chunks + MAX_CHUNKS) {
+			pthread_mutex_unlock(&chunk_mutex);	
+			return NULL;
+		}
+		free_chunk = c;
+		max_chunk_id ++;
+	}
+	free_chunk->x = x;
+	free_chunk->y = y;
+	free_chunk->z = z;
+	free_chunk->free = false;
+	pthread_mutex_unlock(&chunk_mutex);
+
+	return free_chunk;
+}
+
+Chunk *
+find_complete_chunk(int x, int y, int z)
+{
+	pthread_mutex_lock(&chunk_mutex);
+	Chunk *c = chunks;
+	for(; c < chunks + max_chunk_id + 1; c++) {
+		if(!c->free && c->state == READY && c->x == x && c->y == y&& c->z == z) {
+			pthread_mutex_unlock(&chunk_mutex);
+			return c;
+		}
+	}
+	pthread_mutex_unlock(&chunk_mutex);
+	return NULL;
 }
