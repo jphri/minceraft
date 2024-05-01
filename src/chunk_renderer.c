@@ -19,15 +19,17 @@ typedef struct {
 	vec2 texcoord;
 } Vertex;
 
-typedef struct {
+typedef struct GraphicsChunk GraphicsChunk;
+struct GraphicsChunk {
 	int x, y, z;
 	unsigned int chunk_vbo, chunk_vao;
 	unsigned int vert_count;
 	unsigned int water_vbo, water_vao;
 	unsigned int water_vert_count;
-
 	bool free;
-} GraphicsChunk;
+
+	GraphicsChunk *next, *prev;
+};
 
 typedef struct {
 	GraphicsChunk *chunk;
@@ -55,10 +57,14 @@ typedef struct {
 #endif
 
 static GraphicsChunk chunks[MAX_CHUNKS];
+static GraphicsChunk *chunkmap[65536];
 static int max_chunk_id;
 
 static GraphicsChunk *find_or_allocate_chunk(int x, int y, int z);
 static GraphicsChunk *allocate_chunk_except(int x, int y, int z);
+
+static void insert_chunk(GraphicsChunk *chunk);
+static void remove_chunk(GraphicsChunk *chunk);
 
 static bool load_texture(Texture *texture, const char *path);
 static void get_cube_face(Texture *texture, int tex_id, vec2 min, vec2 max);
@@ -607,22 +613,31 @@ allocate_chunk_except(int x, int y, int z)
 	*/
 
 	pthread_mutex_lock(&chunk_mutex);
-	GraphicsChunk *free_chunk = NULL;
-	GraphicsChunk *c = chunks;
-	for(; c < chunks + max_chunk_id + 1; c++) {
-		if(!c->free && c->x == x && c->y == y&& c->z == z) {
+	uint32_t h = chunk_coord_hash(x, y, z);
+	GraphicsChunk *c = chunkmap[h];
+	while(c) {
+		if(c->x == x && c->y == y && c->z == z) {
 			pthread_mutex_unlock(&chunk_mutex);
 			return NULL;
 		}
-		else if(c->free) {
+		c = c->next;
+	}
+
+	GraphicsChunk *free_chunk = NULL;
+	c = chunks;
+	for(; c < chunks + max_chunk_id + 1; c++) {
+		if(c->free) {
 			free_chunk = c;
+			break;
 		} else {
 			/* if it is too far way, treat as a freed too */
 			int dx = abs(c->x - chunk_x);
 			int dy = abs(c->y - chunk_y);
 			int dz = abs(c->z - chunk_z);
 			if(dx > render_distance || dy > render_distance || dz > render_distance) {
+				remove_chunk(c);
 				free_chunk = c;
+				break;
 			}
 		}
 	}
@@ -638,6 +653,7 @@ allocate_chunk_except(int x, int y, int z)
 	free_chunk->y = y;
 	free_chunk->z = z;
 	free_chunk->free = false;
+	insert_chunk(free_chunk);
 	pthread_mutex_unlock(&chunk_mutex);
 
 	return free_chunk;
@@ -654,22 +670,31 @@ find_or_allocate_chunk(int x, int y, int z)
 	*/
 
 	pthread_mutex_lock(&chunk_mutex);
-	GraphicsChunk *free_chunk = NULL;
-	GraphicsChunk *c = chunks;
-	for(; c < chunks + max_chunk_id + 1; c++) {
-		if(!c->free && c->x == x && c->y == y&& c->z == z) {
+	uint32_t h = chunk_coord_hash(x, y, z);
+	GraphicsChunk *c = chunkmap[h];
+	while(c) {
+		if(c->x == x && c->y == y && c->z == z) {
 			pthread_mutex_unlock(&chunk_mutex);
 			return c;
 		}
-		else if(c->free) {
+		c = c->next;
+	}
+
+	GraphicsChunk *free_chunk = NULL;
+	c = chunks;
+	for(; c < chunks + max_chunk_id + 1; c++) {
+		if(c->free) {
 			free_chunk = c;
+			break;
 		} else {
 			/* if it is too far way, treat as a freed too */
 			int dx = abs(c->x - chunk_x);
 			int dy = abs(c->y - chunk_y);
 			int dz = abs(c->z - chunk_z);
 			if(dx > render_distance || dy > render_distance || dz > render_distance) {
+				remove_chunk(c);
 				free_chunk = c;
+				break;
 			}
 		}
 	}
@@ -685,6 +710,7 @@ find_or_allocate_chunk(int x, int y, int z)
 	free_chunk->y = y;
 	free_chunk->z = z;
 	free_chunk->free = false;
+	insert_chunk(c);
 	pthread_mutex_unlock(&chunk_mutex);
 
 	return free_chunk;
@@ -763,3 +789,25 @@ chunk_render_request_update_block(int x, int y, int z)
 	}
 }
 
+void
+insert_chunk(GraphicsChunk *c)
+{
+	uint32_t hash = chunk_coord_hash(c->x, c->y, c->z);
+	c->prev = NULL;
+	c->next = chunkmap[hash];
+	if(chunkmap[hash])
+		chunkmap[hash]->prev = c;
+	chunkmap[hash] = c;
+}
+
+void
+remove_chunk(GraphicsChunk *c)
+{
+	uint32_t hash = chunk_coord_hash(c->x, c->y, c->z);
+	if(c->prev)
+		c->prev->next = c->next;
+	if(c->next)
+		c->next->prev = c->prev;
+	if(chunkmap[hash] == c)
+		chunkmap[hash] = c->next;
+}
