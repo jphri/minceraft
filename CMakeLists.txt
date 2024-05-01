@@ -11,8 +11,6 @@ find_library(GLEW GLEW REQUIRED)
 find_library(OPENGL OpenGL REQUIRED)
 find_package(Threads REQUIRED)
 
-set(CMAKE_C_FLAGS "-O3 -Wall -Wextra -pedantic")
-
 file(GLOB src "src/*.c")
 add_custom_target(COPY_SHADERS ALL
 	COMMAND ${CMAKE_COMMAND} -E copy_directory
@@ -35,3 +33,6 @@ endif()
 add_executable(minceraft ${src})
 add_dependencies(minceraft COPY_SHADERS COPY_TEXTURES)
 target_link_libraries(minceraft PRIVATE ${LIBRARIES} Threads::Threads)
+
+target_compile_options(minceraft PRIVATE -O3 -Wall -Wextra -pedantic)
+target_link_options(minceraft PRIVATE -O3 -Wall -Wextra -pedantic)
