@@ -62,6 +62,7 @@ static int max_chunk_id;
 
 static GraphicsChunk *find_or_allocate_chunk(int x, int y, int z);
 static GraphicsChunk *allocate_chunk_except(int x, int y, int z);
+static GraphicsChunk *find_chunk(int x, int y, int z);
 
 static void insert_chunk(GraphicsChunk *chunk);
 static void remove_chunk(GraphicsChunk *chunk);
@@ -543,38 +544,22 @@ chunk_render()
 	}
 
 	chunk_render_update();
-	for(GraphicsChunk *chunk = chunks;
-		chunk < chunks + max_chunk_id + 1;
-		chunk++)
-	{
-		if(chunk->free) 
-			continue;
-
-		int dx = abs(chunk->x - chunk_x);
-		int dy = abs(chunk->y - chunk_y);
-		int dz = abs(chunk->z - chunk_z);
-		if(dx > render_distance || dy > render_distance || dz > render_distance) {
-			continue;
+	for(int zz = -render_distance; zz < render_distance; zz += CHUNK_SIZE)
+	for(int yy = -render_distance; yy < render_distance; yy += CHUNK_SIZE)
+	for(int xx = -render_distance; xx < render_distance; xx += CHUNK_SIZE) {
+		GraphicsChunk *c = find_chunk(xx + chunk_x, yy + chunk_y, zz + chunk_z);
+		if(c) {
+			chunk_render_render_solid_chunk(c);
 		}
-
-		chunk_render_render_solid_chunk(chunk);
 	}
-
-	for(GraphicsChunk *chunk = chunks;
-		chunk < chunks + max_chunk_id + 1;
-		chunk++)
-	{
-		if(chunk->free) 
-			continue;
-
-		int dx = abs(chunk->x - chunk_x);
-		int dy = abs(chunk->y - chunk_y);
-		int dz = abs(chunk->z - chunk_z);
-		if(dx > render_distance || dy > render_distance || dz > render_distance) {
-			continue;
+	
+	for(int zz = -render_distance; zz < render_distance; zz += CHUNK_SIZE)
+	for(int yy = -render_distance; yy < render_distance; yy += CHUNK_SIZE)
+	for(int xx = -render_distance; xx < render_distance; xx += CHUNK_SIZE) {
+		GraphicsChunk *c = find_chunk(xx + chunk_x, yy + chunk_y, zz + chunk_z);
+		if(c) {
+			chunk_render_render_water_chunk(c);
 		}
-
-		chunk_render_render_water_chunk(chunk);
 	}
 }
 
@@ -810,4 +795,22 @@ remove_chunk(GraphicsChunk *c)
 		c->next->prev = c->prev;
 	if(chunkmap[hash] == c)
 		chunkmap[hash] = c->next;
+}
+
+GraphicsChunk *
+find_chunk(int x, int y, int z)
+{
+	uint32_t h = chunk_coord_hash(x, y, z);
+	pthread_mutex_lock(&chunk_mutex);
+	GraphicsChunk *c = chunkmap[h];
+	while(c) {
+		if(!c->free && c->x == x && c->y == y && c->z == z) {
+			pthread_mutex_unlock(&chunk_mutex);
+			return c;
+		}
+		c = c->next;
+	}
+	pthread_mutex_unlock(&chunk_mutex);
+
+	return NULL;
 }
