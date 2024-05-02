@@ -200,6 +200,20 @@ static inline int clampi(int x, int minv, int maxv) {
 	return mini(maxi(x, minv), maxv);
 }
 
+static inline uint32_t hash_int(uint32_t i) {
+	return (i | 64) ^ ((i << 15) | (i >> 17));
+}
+
+static inline uint32_t hash_int3(uint32_t x, uint32_t y, uint32_t z) {
+	uint32_t h       = 0x0BABAB0E;
+	const uint32_t m = 0xDEADBEEF;
+
+	h = (hash_int(x) ^ h) * m;
+	h = (hash_int(y) ^ h) * m;
+	h = (hash_int(z) ^ h) * m;
+	return h;
+}
+
 #define DEFAULT_ALIGNMENT (sizeof(void*))
 
 #endif

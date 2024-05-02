@@ -365,20 +365,8 @@ find_complete_chunk(int x, int y, int z)
 uint32_t
 chunk_coord_hash(int x, int y, int z)
 {
-	#define X_MUL 0xFEE1DEAD
-	#define Y_MUL 0xCAFEBABE
-	#define Z_MUL 0xDEADBEEF
-	#define INCR  0x0BABAB0E
-
-	x >>= BLOCK_BITS;
-	y >>= BLOCK_BITS;
-	z >>= BLOCK_BITS;
-	x = x * X_MUL + INCR;
-	y = y * Y_MUL + INCR;
-	z = z * Z_MUL + INCR;
-
-	uint32_t r = x ^ y ^ z;
-	return (r & 0xFFFF) ^ (r >> 16);
+	uint32_t h = hash_int3(x, y, z);
+	return (uint16_t)(h >> 16) ^ (h & 0xFFFF);
 }
 
 void
