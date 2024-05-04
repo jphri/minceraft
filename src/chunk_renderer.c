@@ -46,7 +46,7 @@ typedef struct {
 #define BLOCK_SCALE 1.0
 #define WATER_OFFSET 0.1
 #define MAX_CHUNKS 8192
-#define MAX_WORK 16384
+#define MAX_WORK 1024
 
 #ifndef M_PI
 #define M_PI 3.1415926535
