@@ -6,25 +6,25 @@
 #include <math.h>
 #include <GL/glew.h>
 #include <pthread.h>
+#include <stdatomic.h>
+#include <stdbool.h>
 #include <unistd.h>
 
-typedef enum {
-	GENERATING,
-	READY,
-} ChunkState;
 
 typedef struct {
 	int x, y, z;
+	ChunkState state;
 } Work;
 
 #define MAX_CHUNKS 8192
 #define MAX_WORK 1024
 #define NUM_WORKERS 4
 
-static Chunk *find_complete_chunk(int x, int y, int z);
-static Chunk *allocate_chunk_except(int x, int y, int z);
+
+static volatile Chunk *find_chunk(int x, int y, int z, ChunkState state);
+static volatile Chunk *chunk_gen(int x, int y, int z, ChunkState state);
+static volatile Chunk *allocate_chunk(int x, int y, int z);
 static void chunk_randomize(Chunk *chunk);
-static void chunk_worker_func(WorkGroup *wg);
 
 static void insert_chunk(Chunk *c);
 static void remove_chunk(Chunk *c);
@@ -40,12 +40,8 @@ static int running;
 static Chunk *chunkmap[65536];
 static Chunk *chunks;
 static volatile int max_chunk_id;
-
-static pthread_mutex_t chunk_mutex;
-
-static WorkGroup *workg;
-
 static int cx, cy, cz, cradius;
+static pthread_mutex_t chunk_mutex;
 
 void
 world_init()
@@ -55,48 +51,17 @@ world_init()
 	chunks = malloc(sizeof(Chunk) * MAX_CHUNKS);
 	for(int i = 0; i < MAX_CHUNKS; i++) {
 		chunks[i].free = true;
-		chunks[i].state = READY;
+		chunks[i].state = CSTATE_FREE;
 	}
 	memset(chunkmap, 0, sizeof(chunkmap));
 	pthread_mutex_init(&chunk_mutex, NULL);
-	workg = wg_init(chunk_worker_func, sizeof(Work), MAX_WORK, 4);
 }
 
 void
 world_terminate()
 {
 	running = false;
-	wg_terminate(workg);
-	pthread_mutex_destroy(&chunk_mutex);
 	free(chunks);
-}
-
-void
-world_enqueue_load(int x, int y, int z)
-{
-	wg_send(workg, &(Work){
-		.x = x,
-		.y = y, 
-		.z = z	
-	});
-}
-
-void
-chunk_worker_func(WorkGroup *wg)
-{
-	Work my_work;
-	while(wg_recv(wg, &my_work)) {
-		Chunk *chunk = allocate_chunk_except(my_work.x, my_work.y, my_work.z);
-		if(!chunk)
-			continue;
-		chunk->state = GENERATING;
-
-		chunk->x = my_work.x & CHUNK_MASK;
-		chunk->y = my_work.y & CHUNK_MASK;
-		chunk->z = my_work.z & CHUNK_MASK;
-		chunk_randomize(chunk);
-		chunk->state = READY;
-	}
 }
 
 void
@@ -113,27 +78,6 @@ chunk_randomize(Chunk *chunk)
 	}
 }
 
-Chunk *
-find_free_chunk()
-{
-	for(Chunk *c = chunks; c < chunks + MAX_CHUNKS; c++)  {
-		if(c->state == READY) {
-			if(!c->free) {
-				/* if it is too far way, treat as a freed too */
-				int dx = abs(c->x - cx);
-				int dy = abs(c->y - cy);
-				int dz = abs(c->z - cz);
-				if(dx > cradius || dy > cradius || dz > cradius) {
-					return c;
-				}
-			} else {
-				return c;
-			}
-		}
-	}
-	return NULL;
-}
-
 Block
 world_get_block(int x, int y, int z)
 {
@@ -141,13 +85,9 @@ world_get_block(int x, int y, int z)
 	int chunk_y = y & CHUNK_MASK;
 	int chunk_z = z & CHUNK_MASK;
 
-	volatile Chunk *ch = find_complete_chunk(chunk_x, chunk_y, chunk_z);
-	if(!ch) {
-		world_enqueue_load(chunk_x, chunk_y, chunk_z);
-		/* spinlock */
-		while((ch = find_complete_chunk(chunk_x, chunk_y, chunk_z)) == NULL);
-	}
-
+	volatile Chunk *ch;
+	while((ch = chunk_gen(chunk_x, chunk_y, chunk_z, CSTATE_MERGED)) == NULL);
+	
 	x &= BLOCK_MASK;
 	y &= BLOCK_MASK;
 	z &= BLOCK_MASK;
@@ -162,12 +102,8 @@ world_set_block(int x, int y, int z, Block block)
 	int chunk_y = y & CHUNK_MASK;
 	int chunk_z = z & CHUNK_MASK;
 
-	volatile Chunk *ch = find_complete_chunk(chunk_x, chunk_y, chunk_z);
-	if(!ch) {
-		world_enqueue_load(chunk_x, chunk_y, chunk_z);
-		/* spinlock */
-		while((ch = find_complete_chunk(chunk_x, chunk_y, chunk_z)) == NULL);
-	}
+	volatile Chunk *ch;
+	while((ch = chunk_gen(chunk_x, chunk_y, chunk_z, CSTATE_ALLOCATED)) == NULL);
 
 	x &= BLOCK_MASK;
 	y &= BLOCK_MASK;
@@ -285,83 +221,6 @@ world_set_load_border(int x, int y, int z, int radius)
 	cradius = radius;
 }
 
-Chunk *
-allocate_chunk_except(int x, int y, int z)
-{
-	/* 
-		this reduces the amount of iterations to one,
-		as before i would require to look up for all chunks
-		first to check if the chunk exists, 
-		then start over and look for a free chunk
-	*/
-
-	pthread_mutex_lock(&chunk_mutex);
-	Chunk *c;
-	uint32_t hash = chunk_coord_hash(x, y, z);
-	c = chunkmap[hash];
-	while(c) {
-		if(!c->free && c->x == x && c->y == y && c->z == z) {
-			pthread_mutex_unlock(&chunk_mutex);
-			return NULL;
-		}
-		c = c->next;
-	}
-
-	Chunk *free_chunk = NULL;
-	c = chunks;
-	for(; c < chunks + max_chunk_id + 1; c++) {
-		if(c->free) {
-			free_chunk = c;
-			break;
-		} else {
-			/* if it is too far way, treat as a freed too */
-			int dx = abs(c->x - cx);
-			int dy = abs(c->y - cy);
-			int dz = abs(c->z - cz);
-			if(dx > cradius || dy > cradius || dz > cradius) {
-				remove_chunk(c);
-				free_chunk = c;
-				break;
-			}
-		}
-	}
-	if(!free_chunk) {
-		if(c >= chunks + MAX_CHUNKS) {
-			pthread_mutex_unlock(&chunk_mutex);	
-			return NULL;
-		}
-		free_chunk = c;
-		max_chunk_id ++;
-		printf("max chunk id: %d\n", max_chunk_id);
-	}
-	free_chunk->x = x;
-	free_chunk->y = y;
-	free_chunk->z = z;
-	free_chunk->free = false;
-	insert_chunk(c);
-	pthread_mutex_unlock(&chunk_mutex);
-
-	return free_chunk;
-}
-
-Chunk *
-find_complete_chunk(int x, int y, int z)
-{
-	pthread_mutex_lock(&chunk_mutex);
-	Chunk *c;
-	uint32_t hash = chunk_coord_hash(x, y, z);
-	c = chunkmap[hash];
-	while(c) {
-		if(!c->free && c->state == READY && c->x == x && c->y == y && c->z == z) {
-			pthread_mutex_unlock(&chunk_mutex);
-			return c;
-		}
-		c = c->next;
-	}
-	pthread_mutex_unlock(&chunk_mutex);
-	return NULL;
-}
-
 uint32_t
 chunk_coord_hash(int x, int y, int z)
 {
@@ -390,4 +249,96 @@ remove_chunk(Chunk *c)
 		c->next->prev = c->prev;
 	if(chunkmap[hash] == c)
 		chunkmap[hash] = c->next;
+}
+
+volatile Chunk *
+chunk_gen(int x, int y, int z, ChunkState target_state)
+{
+	volatile Chunk *c = find_chunk(x, y, z, 0);
+	if(!c) {
+		c = allocate_chunk(x, y, z);
+	}
+
+	#define MAKE_STATE(STATE) \
+		case STATE: \
+			if(target_state <= STATE) \
+				break;
+
+	switch(c->state) {
+	MAKE_STATE(CSTATE_FREE)
+		c->state = CSTATE_ALLOCATED;
+
+	MAKE_STATE(CSTATE_ALLOCATED)
+		c->state = CSTATE_GENERATING;
+		chunk_randomize(c);
+		c->state = CSTATE_GENERATED;
+
+	MAKE_STATE(CSTATE_GENERATED)
+		c->state = CSTATE_MERGING;
+		for(int z = -CHUNK_SIZE; z <= CHUNK_SIZE; z += CHUNK_SIZE)
+		for(int y = -CHUNK_SIZE; y <= CHUNK_SIZE; y += CHUNK_SIZE)
+		for(int x = -CHUNK_SIZE; x <= CHUNK_SIZE; x += CHUNK_SIZE) {
+			chunk_gen(x + c->x, y + c->y, z + c->z, CSTATE_GENERATED);
+		}
+		c->state = CSTATE_MERGED;
+	MAKE_STATE(CSTATE_MERGED)
+		break;
+	
+	default:
+		/* 
+			-ing states are ignored and returns null for
+			possible spinlock implementations.
+		*/
+		return NULL;
+	}
+
+	return c;
+}
+
+volatile Chunk *
+find_chunk(int x, int y, int z, ChunkState state)
+{
+	volatile Chunk *c;
+	uint32_t hash = chunk_coord_hash(x, y, z);
+	c = chunkmap[hash];
+	while(c) {
+		if(!c->free && c->state >= state && c->x == x && c->y == y && c->z == z) {
+			return c;
+		}
+		c = c->next;
+	}
+	return c;
+}
+
+volatile Chunk *
+allocate_chunk(int x, int y, int z)
+{
+	Chunk *c;
+	pthread_mutex_lock(&chunk_mutex);
+	for(c = chunks; c <= chunks + max_chunk_id; c++) {
+		if(c->free) {
+			break;
+		}
+
+		int dx = abs(cx - c->x);
+		int dy = abs(cy - c->y);
+		int dz = abs(cz - c->z);
+		if(dx > cradius || dy > cradius || dz > cradius) {
+			remove_chunk(c);
+			break;
+		}
+	}
+	if(c - chunks > max_chunk_id) { 
+		max_chunk_id++;
+		c = chunks + max_chunk_id;
+	}
+
+	c->free = false;
+	c->x = x;
+	c->y = y;
+	c->z = z;
+	c->state = CSTATE_ALLOCATED;
+	insert_chunk(c);
+	pthread_mutex_unlock(&chunk_mutex);
+	return c;
 }

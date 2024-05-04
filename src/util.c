@@ -793,6 +793,7 @@ wg_init(void (*worker_func)(WorkGroup *), size_t work_data_size, size_t max_work
 	wg->elem_size = work_data_size;
 	wg->worker_count = worker_count;
 	wg->worker_func = worker_func;
+	wg->terminated = false;
 
 	pthread_mutex_init(&wg->mtx, NULL);
 	pthread_cond_init(&wg->cond, NULL);
@@ -826,6 +827,9 @@ bool
 wg_send(WorkGroup *c, void *ptr)
 {
 	pthread_mutex_lock(&c->mtx);
+	if(c->terminated) {
+		return false;
+	}
 	while(c->enqueued == c->size) {
 		if(c->terminated) {
 			pthread_mutex_unlock(&c->mtx);
@@ -848,12 +852,31 @@ bool
 wg_recv(WorkGroup *c, void *ptr)
 {
 	pthread_mutex_lock(&c->mtx);
-	while(c->enqueued == 0) {
-		if(c->terminated) {
-			pthread_mutex_unlock(&c->mtx);
-			return false;
-		}
+	while(c->enqueued == 0 && !c->terminated) {
 		pthread_cond_wait(&c->cond, &c->mtx);
+	}
+	if(c->terminated) {
+		pthread_mutex_unlock(&c->mtx);
+		return false;
+	}
+	memcpy(ptr, c->queue_begin, c->elem_size);
+	c->queue_begin = ((unsigned char*)c->queue_begin) + c->elem_size;
+	c->enqueued -= c->elem_size;
+	if((unsigned char*)c->queue_begin >= (unsigned char*)c->queue + c->size) {
+		c->queue_begin = c->queue;
+	}
+	pthread_mutex_unlock(&c->mtx);
+	pthread_cond_signal(&c->cond);
+	return true;
+}
+
+bool
+wg_recv_nonblock(WorkGroup *c, void *ptr)
+{
+	pthread_mutex_lock(&c->mtx);
+	if(c->terminated || c->enqueued == 0) {
+		pthread_mutex_unlock(&c->mtx);
+		return false;
 	}
 	memcpy(ptr, c->queue_begin, c->elem_size);
 	c->queue_begin = ((unsigned char*)c->queue_begin) + c->elem_size;

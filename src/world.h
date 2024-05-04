@@ -11,7 +11,6 @@
 #include <linmath.h>
 #include <stdbool.h>
 
-
 typedef enum {
 	BLOCK_NULL,
 	BLOCK_GRASS,
@@ -34,10 +33,19 @@ typedef enum {
 	TOP,
 } Direction;
 
+typedef enum {
+	CSTATE_FREE,
+	CSTATE_ALLOCATED,
+	CSTATE_GENERATING,
+	CSTATE_GENERATED,
+	CSTATE_MERGING, 
+	CSTATE_MERGED,
+} ChunkState;
+
 typedef struct Chunk Chunk;
 struct Chunk {
 	int blocks[CHUNK_SIZE][CHUNK_SIZE][CHUNK_SIZE];
-	int state;
+	ChunkState state;
 	int x, y, z;
 	bool free;
 	Chunk *next, *prev;
