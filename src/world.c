@@ -21,9 +21,9 @@ typedef struct {
 #define NUM_WORKERS 4
 
 
-static Chunk *find_chunk(int x, int y, int z, ChunkState state);
-static Chunk *chunk_gen(int x, int y, int z, ChunkState state);
-static Chunk *allocate_chunk(int x, int y, int z);
+static volatile Chunk *find_chunk(int x, int y, int z, ChunkState state);
+static volatile Chunk *chunk_gen(int x, int y, int z, ChunkState state);
+static volatile Chunk *allocate_chunk(int x, int y, int z);
 static void chunk_randomize(Chunk *chunk);
 
 static void insert_chunk(Chunk *c);
@@ -41,6 +41,7 @@ static Chunk *chunkmap[65536];
 static Chunk *chunks;
 static volatile int max_chunk_id;
 static int cx, cy, cz, cradius;
+static pthread_mutex_t chunk_mutex;
 
 void
 world_init()
@@ -53,6 +54,7 @@ world_init()
 		chunks[i].state = CSTATE_FREE;
 	}
 	memset(chunkmap, 0, sizeof(chunkmap));
+	pthread_mutex_init(&chunk_mutex, NULL);
 }
 
 void
@@ -102,7 +104,6 @@ world_set_block(int x, int y, int z, Block block)
 
 	volatile Chunk *ch;
 	while((ch = chunk_gen(chunk_x, chunk_y, chunk_z, CSTATE_ALLOCATED)) == NULL);
-	
 
 	x &= BLOCK_MASK;
 	y &= BLOCK_MASK;
@@ -250,10 +251,10 @@ remove_chunk(Chunk *c)
 		chunkmap[hash] = c->next;
 }
 
-Chunk *
+volatile Chunk *
 chunk_gen(int x, int y, int z, ChunkState target_state)
 {
-	Chunk *c = find_chunk(x, y, z, 0);
+	volatile Chunk *c = find_chunk(x, y, z, 0);
 	if(!c) {
 		c = allocate_chunk(x, y, z);
 	}
@@ -294,10 +295,10 @@ chunk_gen(int x, int y, int z, ChunkState target_state)
 	return c;
 }
 
-Chunk *
+volatile Chunk *
 find_chunk(int x, int y, int z, ChunkState state)
 {
-	Chunk *c;
+	volatile Chunk *c;
 	uint32_t hash = chunk_coord_hash(x, y, z);
 	c = chunkmap[hash];
 	while(c) {
@@ -309,10 +310,11 @@ find_chunk(int x, int y, int z, ChunkState state)
 	return c;
 }
 
-Chunk *
+volatile Chunk *
 allocate_chunk(int x, int y, int z)
 {
 	Chunk *c;
+	pthread_mutex_lock(&chunk_mutex);
 	for(c = chunks; c <= chunks + max_chunk_id; c++) {
 		if(c->free) {
 			break;
@@ -337,6 +339,6 @@ allocate_chunk(int x, int y, int z)
 	c->z = z;
 	c->state = CSTATE_ALLOCATED;
 	insert_chunk(c);
-
+	pthread_mutex_unlock(&chunk_mutex);
 	return c;
 }
