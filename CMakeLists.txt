@@ -34,5 +34,5 @@ add_executable(minceraft ${src})
 add_dependencies(minceraft COPY_SHADERS COPY_TEXTURES)
 target_link_libraries(minceraft PRIVATE ${LIBRARIES} Threads::Threads)
 
-target_compile_options(minceraft PRIVATE -O3 -Wall -Wextra -pedantic)
+target_compile_options(minceraft PRIVATE -O3 -Wall -Wextra -pedantic -Wno-implicit-fallthrough)
 target_link_options(minceraft PRIVATE -O3 -Wall -Wextra -pedantic)
