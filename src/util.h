@@ -24,7 +24,7 @@ struct WorkGroup {
 	void *queue_begin, *queue_end;
 	size_t size, enqueued;
 	size_t elem_size;
-	volatile bool terminated;
+	bool terminated;
 
 	size_t worker_count;
 	void (*worker_func)(WorkGroup *);
@@ -183,6 +183,7 @@ WorkGroup *wg_init(void (*worker_func)(WorkGroup *wg), size_t work_data_size, si
 void       wg_terminate(WorkGroup *wg);
 bool       wg_send(WorkGroup *wg, void *work_data);
 bool       wg_recv(WorkGroup *wg, void *data_in);
+bool       wg_recv_nonblock(WorkGroup *wg, void *data);
 
 static inline void *to_ptr(RelPtr ptr) {
 	return ((unsigned char*)*ptr.base_pointer) + ptr.offset;

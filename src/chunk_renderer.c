@@ -141,7 +141,7 @@ chunk_render_init()
 
 	pthread_mutex_init(&chunk_mutex, NULL);
 
-	facesg = wg_init(faces_worker_func, sizeof(ChunkFaceWork), MAX_WORK, 4);
+	facesg = wg_init(faces_worker_func, sizeof(ChunkFaceWork), MAX_WORK, 6);
 	glbuffersg = wg_init(NULL, sizeof(ChunkFaceWork), MAX_WORK, 0);
 	
 }
@@ -537,7 +537,7 @@ void
 chunk_render()
 {
 	ChunkFaceWork w;
-	while(wg_recv(glbuffersg, &w)) {
+	while(wg_recv_nonblock(glbuffersg, &w)) {
 		chunk_render_generate_buffers(&w);
 		arrbuf_free(&w.solid_faces);
 		arrbuf_free(&w.water_faces);
@@ -628,7 +628,7 @@ allocate_chunk_except(int x, int y, int z)
 	}
 	if(!free_chunk) {
 		if(c >= chunks + MAX_CHUNKS) {
-			pthread_mutex_unlock(&chunk_mutex);	
+			pthread_mutex_unlock(&chunk_mutex);
 			return NULL;
 		}
 		free_chunk = c;
