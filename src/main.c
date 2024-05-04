@@ -92,6 +92,9 @@ main()
 		double delta = curr_time - pre_time;
 		pre_time = curr_time;
 
+		if(delta > 0.25)
+			delta = 0.25;
+
 		player_update(&player, delta);
 
 		glfwGetWindowSize(window, &w, &h);
@@ -180,6 +183,8 @@ player_update(Player *player, float delta)
 	while(physics_accum > PHYSICS_DELTA) {
 		vec3_add_scaled(player->position, player->position, player->velocity, PHYSICS_DELTA);
 		vec3_add_scaled(player->velocity, player->velocity, player->accel, PHYSICS_DELTA);
+		if(player->velocity[1] < -40.0)	
+			player->velocity[1] = -40.0;
 
 		AABB player_aabb;
 		vec3_dup(player_aabb.position, player->position);
@@ -271,6 +276,8 @@ mouse_click_callback(GLFWwindow *window, int button, int action, int mods)
 				break;
 			}
 		}
+	} else if(button == 2 && action == GLFW_PRESS) {
+		player.position[0] += 10000;
 	}
 }
 
