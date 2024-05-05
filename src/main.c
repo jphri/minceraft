@@ -10,6 +10,7 @@
 #include "util.h"
 #include "glutil.h"
 #include "linmath.h"
+#include "worldgen.h"
 #include "world.h"
 #include "collision.h"
 
@@ -81,8 +82,10 @@ main()
 	player.yaw = 0.0;
 	player.pitch = 0.0;
 	player.position[0] = 0;
-	player.position[1] = 30;
+	player.position[1] = 80;
 	player.position[2] = 0;
+
+	wgen_set_seed("Gente que passa o dia inteiro no twitter e em chan não deveria nem ter direito a voto.");
 
 	glfwShowWindow(window);
 	pre_time = glfwGetTime();

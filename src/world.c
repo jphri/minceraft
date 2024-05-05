@@ -2,6 +2,7 @@
 #include "util.h"
 #include "world.h"
 #include "chunk_renderer.h"
+#include "worldgen.h"
 
 #include <math.h>
 #include <GL/glew.h>
@@ -20,11 +21,9 @@ typedef struct {
 #define MAX_WORK 1024
 #define NUM_WORKERS 4
 
-
 static volatile Chunk *find_chunk(int x, int y, int z, ChunkState state);
 static volatile Chunk *chunk_gen(int x, int y, int z, ChunkState state);
 static volatile Chunk *allocate_chunk(int x, int y, int z);
-static void chunk_randomize(Chunk *chunk);
 
 static void insert_chunk(Chunk *c);
 static void remove_chunk(Chunk *c);
@@ -43,9 +42,6 @@ static volatile int max_chunk_id;
 static int cx, cy, cz, cradius;
 static pthread_mutex_t chunk_mutex;
 
-static PCG32State world_gen;
-static pthread_mutex_t world_gen_mtx;
-
 void
 world_init()
 {
@@ -58,8 +54,6 @@ world_init()
 	}
 	memset(chunkmap, 0, sizeof(chunkmap));
 	pthread_mutex_init(&chunk_mutex, NULL);
-	world_gen = hash_string("Gente que passa o dia inteiro no twitter e em chan não deveria nem ter direito a voto.");
-	init_pcg32(&world_gen);
 }
 
 void
@@ -67,22 +61,6 @@ world_terminate()
 {
 	running = false;
 	free(chunks);
-}
-
-void
-chunk_randomize(Chunk *chunk)
-{
-	for(int z = 0; z < CHUNK_SIZE; z++)
-	for(int y = 0; y < CHUNK_SIZE; y++)
-	for(int x = 0; x < CHUNK_SIZE; x++) {
-		pthread_mutex_lock(&world_gen_mtx);
-		if(rand_pcg32(&world_gen) & 1) {
-			chunk->blocks[x][y][z] = rand_pcg32(&world_gen) % (BLOCK_LAST - BLOCK_GRASS) + BLOCK_GRASS;
-		} else {
-			chunk->blocks[x][y][z] = 0;
-		}
-		pthread_mutex_unlock(&world_gen_mtx);
-	}
 }
 
 Block
@@ -277,7 +255,7 @@ chunk_gen(int x, int y, int z, ChunkState target_state)
 
 	MAKE_STATE(CSTATE_ALLOCATED)
 		c->state = CSTATE_GENERATING;
-		chunk_randomize(c);
+		wgen_generate(x, y, z);
 		c->state = CSTATE_GENERATED;
 
 	MAKE_STATE(CSTATE_GENERATED)
@@ -290,7 +268,7 @@ chunk_gen(int x, int y, int z, ChunkState target_state)
 		c->state = CSTATE_MERGED;
 	MAKE_STATE(CSTATE_MERGED)
 		break;
-	
+
 	MAKE_STATE(CSTATE_GENERATING)
 		if(target_state <= CSTATE_ALLOCATED)
 			return c;
