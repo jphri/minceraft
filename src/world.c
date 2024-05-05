@@ -291,6 +291,10 @@ chunk_gen(int x, int y, int z, ChunkState target_state)
 	MAKE_STATE(CSTATE_MERGED)
 		break;
 	
+	MAKE_STATE(CSTATE_GENERATING)
+		if(target_state <= CSTATE_ALLOCATED)
+			return c;
+
 	default:
 		/* 
 			-ing states are ignored and returns null for
