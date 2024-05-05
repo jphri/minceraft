@@ -66,29 +66,41 @@ world_terminate()
 Block
 world_get_block(int x, int y, int z)
 {
-	int chunk_x = x & CHUNK_MASK;
-	int chunk_y = y & CHUNK_MASK;
-	int chunk_z = z & CHUNK_MASK;
-
-	volatile Chunk *ch;
-	while((ch = chunk_gen(chunk_x, chunk_y, chunk_z, CSTATE_MERGED)) == NULL);
-	
-	x &= BLOCK_MASK;
-	y &= BLOCK_MASK;
-	z &= BLOCK_MASK;
-	
-	return ch->blocks[z][y][x];
+	return world_get(x, y, z, CSTATE_MERGED);
 }
 
 void
 world_set_block(int x, int y, int z, Block block)
+{
+	world_set(x, y, z, CSTATE_ALLOCATED, block);
+}
+
+Block
+world_get(int x, int y, int z, ChunkState state)
 {
 	int chunk_x = x & CHUNK_MASK;
 	int chunk_y = y & CHUNK_MASK;
 	int chunk_z = z & CHUNK_MASK;
 
 	volatile Chunk *ch;
-	while((ch = chunk_gen(chunk_x, chunk_y, chunk_z, CSTATE_ALLOCATED)) == NULL);
+	while((ch = chunk_gen(chunk_x, chunk_y, chunk_z, state)) == NULL);
+
+	x &= BLOCK_MASK;
+	y &= BLOCK_MASK;
+	z &= BLOCK_MASK;
+
+	return ch->blocks[z][y][x];
+}
+
+void
+world_set(int x, int y, int z, ChunkState state, Block block)
+{
+	int chunk_x = x & CHUNK_MASK;
+	int chunk_y = y & CHUNK_MASK;
+	int chunk_z = z & CHUNK_MASK;
+
+	volatile Chunk *ch;
+	while((ch = chunk_gen(chunk_x, chunk_y, chunk_z, state)) == NULL);
 
 	x &= BLOCK_MASK;
 	y &= BLOCK_MASK;

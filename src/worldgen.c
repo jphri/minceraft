@@ -66,12 +66,12 @@ stage_shape(int cx, int cy, int cz)
 			float density = octaved3(vv, density_seed) + (height - yy) * 5.0 / GROUND_HEIGHT;
 
 			if(density > 0) {
-				world_set_block(xx, yy, zz, BLOCK_GRASS);
+				world_set(xx, yy, zz, CSTATE_ALLOCATED, BLOCK_GRASS);
 			} else {
 				if(yy < GROUND_HEIGHT)
-					world_set_block(xx, yy, zz, BLOCK_WATER);
+					world_set(xx, yy, zz, CSTATE_ALLOCATED, BLOCK_WATER);
 				else
-					world_set_block(xx, yy, zz, BLOCK_NULL);
+					world_set(xx, yy, zz, CSTATE_ALLOCATED, BLOCK_NULL);
 			}
 		}
 	}
