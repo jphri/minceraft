@@ -16,12 +16,12 @@ typedef struct {
 	float x, y;
 } SplinePoint;
 
-static float octaved2(float x, float z, int seed);
+static float octaved2(vec2 v, int seed);
 static float octaved3(vec3 v, int seed);
 static float spline(float in, size_t nsplines, SplinePoint *splines);
 static float map(float l, float xmin, float xmax, float ymin, float ymax);
 
-static float heightmap(float x, float z, int seed);
+static float heightmap(vec2 v, int seed);
 
 static PCG32State basic_seed;
 static uint32_t   heightmap_seed;
@@ -45,12 +45,18 @@ wgen_generate(int cx, int cy, int cz)
 	{
 		int xx = x + cx;
 		int zz = z + cz;
+
+		vec2 v;
+		vec2_mul(v, (vec2){ xx, zz }, (vec2){ 0.0625 / CHUNK_SIZE, 0.0625 / CHUNK_SIZE });
 		
-		float height = heightmap(xx, zz, heightmap_seed);
+		float height = heightmap(v, heightmap_seed);
 		for(int y = 0; y < CHUNK_SIZE; y++) {
+			vec3 vv;
 			int yy = y + cy;
 
-			float density = octaved3((vec3){ xx, yy, zz }, density_seed) + (height - yy) * 2.25 / GROUND_HEIGHT;
+			vec3_mul(vv, (vec3){ xx, yy, zz }, (vec3){ 0.25 / CHUNK_SIZE, 0.75 / CHUNK_SIZE, 0.25 / CHUNK_SIZE });
+
+			float density = octaved3(vv, density_seed) + (height - yy) * 6.75 / GROUND_HEIGHT;
 
 			if(density > 0) {
 				world_set_block(xx, yy, zz, BLOCK_GRASS);
@@ -62,13 +68,13 @@ wgen_generate(int cx, int cy, int cz)
 }
 
 float
-octaved2(float x, float z, int seed)
+octaved2(vec2 v, int seed)
 {
 	float a = 4.0;
 	float r = 0.0;
 
 	for(int i = 0; i < 8; i++) {
-		r += noise3(x * a * X_SCALE, z * a * X_SCALE, seed) * a;
+		r += noise3(v[0] * a, v[1] * a, seed) * a;
 		a *= 0.5;
 	}
 
@@ -82,7 +88,7 @@ octaved3(vec3 position, int seed)
 	float r = 0.0;
 
 	for(int i = 0; i < 8; i++) {
-		r += noise4(position[0] * a * X_SCALE, position[1] * a * Y_SCALE, position[2] * a * Z_SCALE, seed) * a;
+		r += noise4(position[0] * a, position[1] * a, position[2] * a, seed) * a;
 		a *= 0.5;
 	}
 
@@ -108,7 +114,7 @@ spline(float in, size_t nsplines, SplinePoint *splines)
 }
 
 float
-heightmap(float x, float z, int seed)
+heightmap(vec2 v, int seed)
 {
 	static SplinePoint splines[] = {
 		{ -1.00, GROUND_HEIGHT - 20 },
@@ -119,5 +125,5 @@ heightmap(float x, float z, int seed)
 		{  0.95, GROUND_HEIGHT + 15 }
 	};
 
-	return spline(octaved2(x, z, seed), LENGTH(splines), splines);
+	return spline(octaved2(v, seed), LENGTH(splines), splines);
 }
