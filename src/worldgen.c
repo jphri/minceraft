@@ -23,6 +23,8 @@ static float map(float l, float xmin, float xmax, float ymin, float ymax);
 
 static float heightmap(vec2 v, int seed);
 
+static void stage_shape(int x, int y, int z);
+
 static PCG32State basic_seed;
 static uint32_t   heightmap_seed;
 static uint32_t   density_seed;
@@ -40,6 +42,12 @@ wgen_set_seed(const char *seed)
 void
 wgen_generate(int cx, int cy, int cz)
 {
+	stage_shape(cx, cy, cz);
+}
+
+void
+stage_shape(int cx, int cy, int cz)
+{
 	for(int x = 0; x < CHUNK_SIZE; x++)
 	for(int z = 0; z < CHUNK_SIZE; z++) 
 	{
@@ -54,14 +62,16 @@ wgen_generate(int cx, int cy, int cz)
 			vec3 vv;
 			int yy = y + cy;
 
-			vec3_mul(vv, (vec3){ xx, yy, zz }, (vec3){ 0.25 / CHUNK_SIZE, 0.75 / CHUNK_SIZE, 0.25 / CHUNK_SIZE });
-
-			float density = octaved3(vv, density_seed) + (height - yy) * 6.75 / GROUND_HEIGHT;
+			vec3_mul(vv, (vec3){ xx, yy, zz }, (vec3){ 0.25 / CHUNK_SIZE, 0.25 / CHUNK_SIZE, 0.25 / CHUNK_SIZE });
+			float density = octaved3(vv, density_seed) + (height - yy) * 5.0 / GROUND_HEIGHT;
 
 			if(density > 0) {
 				world_set_block(xx, yy, zz, BLOCK_GRASS);
 			} else {
-				world_set_block(xx, yy, zz, BLOCK_NULL);
+				if(yy < GROUND_HEIGHT)
+					world_set_block(xx, yy, zz, BLOCK_WATER);
+				else
+					world_set_block(xx, yy, zz, BLOCK_NULL);
 			}
 		}
 	}
