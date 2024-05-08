@@ -10,6 +10,10 @@
 #define Y_SCALE (0.0625 / CHUNK_SIZE)
 #define Z_SCALE (0.0625 / CHUNK_SIZE)
 
+#define HEIGHT_AMPL 5.0
+#define HEIGHT_SCALE (vec2){ 0.0625 / CHUNK_SIZE, 0.0625 / CHUNK_SIZE }
+#define NOISE3_SCALE (vec3){ 0.25 / CHUNK_SIZE, 0.4 / CHUNK_SIZE, 0.25 / CHUNK_SIZE }
+
 #define GROUND_HEIGHT 64
 
 typedef struct {
@@ -23,6 +27,7 @@ static float map(float l, float xmin, float xmax, float ymin, float ymax);
 
 static float heightmap(vec2 v, int seed);
 
+static void surface(int x, int y, int z, float height);
 static void stage_shape(int x, int y, int z);
 
 static PCG32State basic_seed;
@@ -38,7 +43,7 @@ wgen_set_seed(const char *seed)
 	heightmap_seed = rand_pcg32(&basic_seed);
 	density_seed   = rand_pcg32(&basic_seed);
 }
-
+ 
 void
 wgen_generate(int cx, int cy, int cz)
 {
@@ -48,6 +53,10 @@ wgen_generate(int cx, int cy, int cz)
 void
 stage_shape(int cx, int cy, int cz)
 {
+	/* cache */
+	float density_queue[4];
+	int density_index = 0, density_size = 0;
+
 	for(int x = 0; x < CHUNK_SIZE; x++)
 	for(int z = 0; z < CHUNK_SIZE; z++) 
 	{
@@ -55,18 +64,26 @@ stage_shape(int cx, int cy, int cz)
 		int zz = z + cz;
 
 		vec2 v;
-		vec2_mul(v, (vec2){ xx, zz }, (vec2){ 0.0625 / CHUNK_SIZE, 0.0625 / CHUNK_SIZE });
+		vec2_mul(v, (vec2){ xx, zz }, HEIGHT_SCALE);
 		
+		density_size = 0;
+		density_index = 0;
 		float height = heightmap(v, heightmap_seed);
 		for(int y = 0; y < CHUNK_SIZE; y++) {
 			vec3 vv;
 			int yy = y + cy;
 
-			vec3_mul(vv, (vec3){ xx, yy, zz }, (vec3){ 0.25 / CHUNK_SIZE, 0.25 / CHUNK_SIZE, 0.25 / CHUNK_SIZE });
-			float density = octaved3(vv, density_seed) + (height - yy) * 5.0 / GROUND_HEIGHT;
+			vec3_mul(vv, (vec3){ xx, yy, zz }, NOISE3_SCALE);
+			float density = octaved3(vv, density_seed) + (height - yy) * HEIGHT_AMPL / GROUND_HEIGHT;
+			density_queue[density_index++] = density;
+			if(density_size < LENGTH(density_queue)) {
+				density_size++;
+			} else {
+				density_index %= LENGTH(density_queue);
+			}
 
 			if(density > 0) {
-				world_set(xx, yy, zz, CSTATE_ALLOCATED, BLOCK_GRASS);
+				surface(xx, yy, zz, height);
 			} else {
 				if(yy < GROUND_HEIGHT)
 					world_set(xx, yy, zz, CSTATE_ALLOCATED, BLOCK_WATER);
@@ -131,9 +148,34 @@ heightmap(vec2 v, int seed)
 		{ -0.50, GROUND_HEIGHT - 10 },
 		{ -0.40, GROUND_HEIGHT - 2   },
 		{  0.40, GROUND_HEIGHT + 2   },
-		{  0.60, GROUND_HEIGHT + 10  },
-		{  0.95, GROUND_HEIGHT + 15 }
+		{  0.80, GROUND_HEIGHT + 2  },
+		{  0.95, GROUND_HEIGHT + 40 }
 	};
 
 	return spline(octaved2(v, seed), LENGTH(splines), splines);
+}
+
+void
+surface(int x, int y, int z, float height)
+{
+	vec3 vv;
+	int i;
+	for(i = 1; i < 4; i++) {
+		vec3_mul(vv, (vec3){ x, y + i, z }, NOISE3_SCALE);
+		float density = octaved3(vv, density_seed) + (height - y - i) * HEIGHT_AMPL / GROUND_HEIGHT;
+
+		if(density < 0)
+			break;
+	}
+	switch(i) {
+	case 1:
+		world_set(x, y, z, CSTATE_ALLOCATED, BLOCK_GRASS);
+		break;
+	case 2:
+	case 3:
+		world_set(x, y, z, CSTATE_ALLOCATED, BLOCK_DIRT);
+		break;
+	case 4:
+		world_set(x, y, z, CSTATE_ALLOCATED, BLOCK_STONE);
+	}
 }
