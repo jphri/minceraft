@@ -4,6 +4,7 @@
 #include "chunk_renderer.h"
 #include "worldgen.h"
 
+#include <assert.h>
 #include <math.h>
 #include <GL/glew.h>
 #include <pthread.h>
@@ -329,8 +330,7 @@ chunk_gen(int x, int y, int z, ChunkState target_state)
 		c->state = CSTATE_SURFACING;
 		wgen_surface(c->x, c->y, c->z);
 		c->state = CSTATE_SURFACED;
-		break;
-
+		
 	MAKE_STATE(CSTATE_SURFACED)
 		c->state = CSTATE_DECORATING;
 		wgen_decorate(c->x, c->y, c->z);
@@ -366,6 +366,8 @@ volatile Chunk *
 allocate_chunk(int x, int y, int z)
 {
 	Chunk *c;
+
+	assert(max_chunk_id < MAX_CHUNKS);
 	pthread_mutex_lock(&chunk_mutex);
 	for(c = chunks; c <= chunks + max_chunk_id; c++) {
 		if(c->free) {
@@ -389,7 +391,7 @@ allocate_chunk(int x, int y, int z)
 	c->x = x;
 	c->y = y;
 	c->z = z;
-	c->state = CSTATE_ALLOCATED;
+	c->state = CSTATE_FREE;
 	insert_chunk(c);
 	pthread_mutex_unlock(&chunk_mutex);
 	return c;

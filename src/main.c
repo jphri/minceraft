@@ -281,6 +281,7 @@ mouse_click_callback(GLFWwindow *window, int button, int action, int mods)
 		}
 	} else if(button == 2 && action == GLFW_PRESS) {
 		player.position[0] += 10000;
+		player_update(&player, 0);
 	}
 }
 
