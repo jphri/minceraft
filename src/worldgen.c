@@ -5,13 +5,14 @@
 #include <stdio.h>
 #include <linmath.h>
 #include <noise1234.h>
+#include <assert.h>
 
 #define X_SCALE (0.0625 / CHUNK_SIZE)
 #define Y_SCALE (0.0625 / CHUNK_SIZE)
 #define Z_SCALE (0.0625 / CHUNK_SIZE)
 
-#define HEIGHT_AMPL 5.0
-#define HEIGHT_SCALE (vec2){ 0.0625 / CHUNK_SIZE, 0.0625 / CHUNK_SIZE }
+#define HEIGHT_AMPL 4.0
+#define HEIGHT_SCALE (vec2){ 0.0625 / (4 * CHUNK_SIZE), 0.0625 / (4 * CHUNK_SIZE) }
 #define NOISE3_SCALE (vec3){ 0.25 / CHUNK_SIZE, 0.4 / CHUNK_SIZE, 0.25 / CHUNK_SIZE }
 
 #define GROUND_HEIGHT 64
@@ -43,20 +44,10 @@ wgen_set_seed(const char *seed)
 	heightmap_seed = rand_pcg32(&basic_seed);
 	density_seed   = rand_pcg32(&basic_seed);
 }
- 
-void
-wgen_generate(int cx, int cy, int cz)
-{
-	stage_shape(cx, cy, cz);
-}
 
 void
-stage_shape(int cx, int cy, int cz)
+wgen_shape(int cx, int cy, int cz)
 {
-	/* cache */
-	float density_queue[4];
-	int density_index = 0, density_size = 0;
-
 	for(int x = 0; x < CHUNK_SIZE; x++)
 	for(int z = 0; z < CHUNK_SIZE; z++) 
 	{
@@ -66,8 +57,6 @@ stage_shape(int cx, int cy, int cz)
 		vec2 v;
 		vec2_mul(v, (vec2){ xx, zz }, HEIGHT_SCALE);
 		
-		density_size = 0;
-		density_index = 0;
 		float height = heightmap(v, heightmap_seed);
 		for(int y = 0; y < CHUNK_SIZE; y++) {
 			vec3 vv;
@@ -75,20 +64,40 @@ stage_shape(int cx, int cy, int cz)
 
 			vec3_mul(vv, (vec3){ xx, yy, zz }, NOISE3_SCALE);
 			float density = octaved3(vv, density_seed) + (height - yy) * HEIGHT_AMPL / GROUND_HEIGHT;
-			density_queue[density_index++] = density;
-			if(density_size < LENGTH(density_queue)) {
-				density_size++;
-			} else {
-				density_index %= LENGTH(density_queue);
-			}
+			world_set_density(xx, yy, zz, CSTATE_SHAPING, density);
 
 			if(density > 0) {
-				surface(xx, yy, zz, height);
+				world_set(xx, yy, zz, CSTATE_SHAPING, BLOCK_STONE);
 			} else {
-				if(yy < GROUND_HEIGHT)
-					world_set(xx, yy, zz, CSTATE_ALLOCATED, BLOCK_WATER);
-				else
-					world_set(xx, yy, zz, CSTATE_ALLOCATED, BLOCK_NULL);
+				world_set(xx, yy, zz, CSTATE_SHAPING, yy < GROUND_HEIGHT ? BLOCK_WATER : BLOCK_NULL);
+			}
+		}
+	}
+}
+
+void
+wgen_surface(int cx, int cy, int cz)
+{
+	for(int z = cz; z < cz + CHUNK_SIZE; z++)
+	for(int y = cy; y < cy + CHUNK_SIZE; y++)
+	for(int x = cx; x < cx + CHUNK_SIZE; x++) {
+
+		if(world_get(x, y, z, CSTATE_SURFACING) == BLOCK_STONE) {
+			int i;
+			for(i = 1; i < 4; i++) {
+				float den = world_get_density(x, y + i, z, CSTATE_SHAPED);
+				if(den <= 0)
+					break;
+			}
+			
+			switch(i) {
+			case 1:
+				world_set(x, y, z, CSTATE_SURFACING, BLOCK_GRASS);
+				break;
+			case 2:
+			case 3:
+				world_set(x, y, z, CSTATE_SURFACING, BLOCK_DIRT);
+				break;
 			}
 		}
 	}

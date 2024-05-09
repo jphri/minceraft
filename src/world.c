@@ -7,9 +7,9 @@
 #include <math.h>
 #include <GL/glew.h>
 #include <pthread.h>
-#include <stdatomic.h>
 #include <stdbool.h>
 #include <unistd.h>
+#include <limits.h>
 
 
 typedef struct {
@@ -66,7 +66,7 @@ world_terminate()
 Block
 world_get_block(int x, int y, int z)
 {
-	return world_get(x, y, z, CSTATE_MERGED);
+	return world_get(x, y, z, CSTATE_SURFACED);
 }
 
 void
@@ -90,6 +90,46 @@ world_get(int x, int y, int z, ChunkState state)
 	z &= BLOCK_MASK;
 
 	return ch->blocks[z][y][x];
+}
+
+float
+world_get_density(int x, int y, int z, ChunkState state)
+{
+	int chunk_x = x & CHUNK_MASK;
+	int chunk_y = y & CHUNK_MASK;
+	int chunk_z = z & CHUNK_MASK;
+
+	volatile Chunk *ch;
+	while((ch = chunk_gen(chunk_x, chunk_y, chunk_z, state)) == NULL);
+
+	x &= BLOCK_MASK;
+	y &= BLOCK_MASK;
+	z &= BLOCK_MASK;
+
+	return (float)ch->density[z][y][x] / 256.0;
+}
+
+void
+world_set_density(int x, int y, int z, ChunkState state, float r)
+{
+	int chunk_x = x & CHUNK_MASK;
+	int chunk_y = y & CHUNK_MASK;
+	int chunk_z = z & CHUNK_MASK;
+
+	volatile Chunk *ch;
+	while((ch = chunk_gen(chunk_x, chunk_y, chunk_z, state)) == NULL);
+
+	x &= BLOCK_MASK;
+	y &= BLOCK_MASK;
+	z &= BLOCK_MASK;
+
+	r *= 256.0;
+	if(r > SHRT_MAX)
+		r = SHRT_MAX;
+	if(r < SHRT_MIN)
+		r = SHRT_MIN;
+
+	ch->density[z][y][x] = (short)r;
 }
 
 void
@@ -260,37 +300,34 @@ chunk_gen(int x, int y, int z, ChunkState target_state)
 		case STATE: \
 			if(target_state <= STATE) \
 				break;
+	
+	#define MAKE_ING_STATE(STATE) \
+		case STATE: \
+			if(target_state <= STATE) \
+				return c; \
+			else \
+			 	return NULL;
 
 	switch(c->state) {
 	MAKE_STATE(CSTATE_FREE)
 		c->state = CSTATE_ALLOCATED;
 
 	MAKE_STATE(CSTATE_ALLOCATED)
-		c->state = CSTATE_GENERATING;
-		wgen_generate(x, y, z);
-		c->state = CSTATE_GENERATED;
+		c->state = CSTATE_SHAPING;
+		wgen_shape(c->x, c->y, c->z);
+		c->state = CSTATE_SHAPED;
 
-	MAKE_STATE(CSTATE_GENERATED)
-		c->state = CSTATE_MERGING;
-		for(int z = -CHUNK_SIZE; z <= CHUNK_SIZE; z += CHUNK_SIZE)
-		for(int y = -CHUNK_SIZE; y <= CHUNK_SIZE; y += CHUNK_SIZE)
-		for(int x = -CHUNK_SIZE; x <= CHUNK_SIZE; x += CHUNK_SIZE) {
-			chunk_gen(x + c->x, y + c->y, z + c->z, CSTATE_GENERATED);
-		}
-		c->state = CSTATE_MERGED;
-	MAKE_STATE(CSTATE_MERGED)
+	MAKE_STATE(CSTATE_SHAPED)
+		c->state = CSTATE_SURFACING;
+		wgen_surface(c->x, c->y, c->z);
+		c->state = CSTATE_SURFACED;
 		break;
 
-	MAKE_STATE(CSTATE_GENERATING)
-		if(target_state <= CSTATE_ALLOCATED)
-			return c;
-
-	default:
-		/* 
-			-ing states are ignored and returns null for
-			possible spinlock implementations.
-		*/
-		return NULL;
+	MAKE_STATE(CSTATE_SURFACED)
+		break;
+	
+	MAKE_ING_STATE(CSTATE_SHAPING);
+	MAKE_ING_STATE(CSTATE_SURFACING);
 	}
 
 	return c;

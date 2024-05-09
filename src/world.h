@@ -36,15 +36,18 @@ typedef enum {
 typedef enum {
 	CSTATE_FREE,
 	CSTATE_ALLOCATED,
-	CSTATE_GENERATING,
-	CSTATE_GENERATED,
+	CSTATE_SHAPING,
+	CSTATE_SHAPED,
+	CSTATE_SURFACING,
+	CSTATE_SURFACED,
 	CSTATE_MERGING, 
 	CSTATE_MERGED,
 } ChunkState;
 
 typedef struct Chunk Chunk;
 struct Chunk {
-	int blocks[CHUNK_SIZE][CHUNK_SIZE][CHUNK_SIZE];
+	short density[CHUNK_SIZE][CHUNK_SIZE][CHUNK_SIZE];
+	char blocks[CHUNK_SIZE][CHUNK_SIZE][CHUNK_SIZE];
 	ChunkState state;
 	int x, y, z;
 	bool free;
@@ -76,6 +79,9 @@ void  world_set_block(int x, int y, int z, Block block);
 
 Block world_get(int x, int y, int z, ChunkState state);
 void  world_set(int x, int y, int z, ChunkState state, Block block);
+
+float world_get_density(int x, int y, int z, ChunkState state);
+void  world_set_density(int x, int y, int z, ChunkState state, float r);
 
 RaycastWorld world_begin_raycast(vec3 position, vec3 direction, float max_distance);
 int          world_raycast(RaycastWorld *rw);
