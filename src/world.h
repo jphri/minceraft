@@ -20,6 +20,8 @@ typedef enum {
 	BLOCK_PLANKS,
 	BLOCK_GLASS,
 	BLOCK_WATER,
+	BLOCK_GRASS_BLADES,
+	BLOCK_ROSE,
 	BLOCK_LAST,
 	BLOCK_UNLOADED = -1
 } Block;
@@ -33,6 +35,7 @@ typedef enum {
 	TOP,
 } Direction;
 
+/* order is important */
 typedef enum {
 	CSTATE_FREE,
 	CSTATE_ALLOCATED,
@@ -40,8 +43,8 @@ typedef enum {
 	CSTATE_SHAPED,
 	CSTATE_SURFACING,
 	CSTATE_SURFACED,
-	CSTATE_MERGING, 
-	CSTATE_MERGED,
+	CSTATE_DECORATING,
+	CSTATE_DECORATED,
 } ChunkState;
 
 typedef struct Chunk Chunk;
@@ -66,6 +69,7 @@ struct RaycastWorld {
 
 typedef struct {
 	bool is_transparent;
+	bool is_ghost;
 } BlockProperties;
 
 void world_init();

@@ -31,7 +31,15 @@ static void remove_chunk(Chunk *c);
 static BlockProperties bprop[] = {
 	[BLOCK_NULL]  = { .is_transparent = true },
 	[BLOCK_GLASS] = { .is_transparent = true }, 
-	[BLOCK_WATER] = { .is_transparent = true }
+	[BLOCK_WATER] = { .is_transparent = true }, 
+	[BLOCK_GRASS_BLADES] = {
+		.is_transparent = true, 
+		.is_ghost = true
+	},
+	[BLOCK_ROSE] = {
+		.is_transparent = true,
+		.is_ghost = true,
+	}
 };
 
 static int running;
@@ -66,7 +74,7 @@ world_terminate()
 Block
 world_get_block(int x, int y, int z)
 {
-	return world_get(x, y, z, CSTATE_SURFACED);
+	return world_get(x, y, z, CSTATE_DECORATED);
 }
 
 void
@@ -324,10 +332,16 @@ chunk_gen(int x, int y, int z, ChunkState target_state)
 		break;
 
 	MAKE_STATE(CSTATE_SURFACED)
+		c->state = CSTATE_DECORATING;
+		wgen_decorate(c->x, c->y, c->z);
+		c->state = CSTATE_DECORATED;
+
+	MAKE_STATE(CSTATE_DECORATED)
 		break;
 	
 	MAKE_ING_STATE(CSTATE_SHAPING);
 	MAKE_ING_STATE(CSTATE_SURFACING);
+	MAKE_ING_STATE(CSTATE_DECORATING);
 	}
 
 	return c;

@@ -23,17 +23,18 @@ typedef struct {
 
 static float octaved2(vec2 v, int seed);
 static float octaved3(vec3 v, int seed);
+static int   hash_coord(uint32_t s, int x, int y, int z);
+
 static float spline(float in, size_t nsplines, SplinePoint *splines);
 static float map(float l, float xmin, float xmax, float ymin, float ymax);
 
 static float heightmap(vec2 v, int seed);
 
-static void surface(int x, int y, int z, float height);
-static void stage_shape(int x, int y, int z);
-
 static PCG32State basic_seed;
 static uint32_t   heightmap_seed;
 static uint32_t   density_seed;
+static uint32_t   coord_hash;
+static uint32_t   grass_flower_hash;
 
 void 
 wgen_set_seed(const char *seed)
@@ -41,8 +42,10 @@ wgen_set_seed(const char *seed)
 	basic_seed = hash_string(seed);
 	init_pcg32(&basic_seed);
 
-	heightmap_seed = rand_pcg32(&basic_seed);
-	density_seed   = rand_pcg32(&basic_seed);
+	heightmap_seed    = rand_pcg32(&basic_seed);
+	density_seed      = rand_pcg32(&basic_seed);
+	coord_hash        = rand_pcg32(&basic_seed);
+	grass_flower_hash = rand_pcg32(&basic_seed);
 }
 
 void
@@ -98,6 +101,25 @@ wgen_surface(int cx, int cy, int cz)
 			case 3:
 				world_set(x, y, z, CSTATE_SURFACING, BLOCK_DIRT);
 				break;
+			}
+		}
+	}
+}
+
+void
+wgen_decorate(int cx, int cy, int cz)
+{
+	for(int z = cz; z < cz + CHUNK_SIZE; z++)
+	for(int y = cy; y < cy + CHUNK_SIZE; y++)
+	for(int x = cx; x < cx + CHUNK_SIZE; x++) {
+
+		if((hash_coord(coord_hash, x, y, z) & 7) != 0) {
+			continue;
+		}
+
+		if(world_get(x, y, z, CSTATE_DECORATING) == BLOCK_NULL) {
+			if(world_get(x, y - 1, z, CSTATE_SURFACED) == BLOCK_GRASS) {
+				world_set(x, y, z, CSTATE_DECORATING, (hash_coord(grass_flower_hash, x, y, z) & 7) != 0 ? BLOCK_GRASS_BLADES : BLOCK_ROSE);
 			}
 		}
 	}
@@ -164,27 +186,24 @@ heightmap(vec2 v, int seed)
 	return spline(octaved2(v, seed), LENGTH(splines), splines);
 }
 
-void
-surface(int x, int y, int z, float height)
+static uint32_t hash(uint32_t i)
 {
-	vec3 vv;
-	int i;
-	for(i = 1; i < 4; i++) {
-		vec3_mul(vv, (vec3){ x, y + i, z }, NOISE3_SCALE);
-		float density = octaved3(vv, density_seed) + (height - y - i) * HEIGHT_AMPL / GROUND_HEIGHT;
+	i = ((i >> 16) ^ i) * 0x45d9f3b;
+	i = ((i >> 16) ^ i) * 0x45d9f3b;
+	i = ((i >> 16) ^ i);
+	return i;
+}
 
-		if(density < 0)
-			break;
-	}
-	switch(i) {
-	case 1:
-		world_set(x, y, z, CSTATE_ALLOCATED, BLOCK_GRASS);
-		break;
-	case 2:
-	case 3:
-		world_set(x, y, z, CSTATE_ALLOCATED, BLOCK_DIRT);
-		break;
-	case 4:
-		world_set(x, y, z, CSTATE_ALLOCATED, BLOCK_STONE);
-	}
+int
+hash_coord(uint32_t s, int x, int y, int z)
+{
+	#define INITIAL 0xDEADBEEF
+	#define M 0x12345B
+	uint32_t h = INITIAL;
+	
+	h = (hash(x * s) ^ h) * M;
+	h = (hash(y * s) ^ h) * M;
+	h = (hash(z * s) ^ h) * M;
+	
+	return h;
 }

@@ -200,7 +200,7 @@ player_update(Player *player, float delta)
 			int player_z = floorf(z + player->position[2]);
 
 			Block b = world_get_block(player_x, player_y, player_z);
-			if(b > 0) {
+			if(b > 0 && !block_properties(b)->is_ghost) {
 				Contact c;
 				AABB block_aabb = {
 					.position = { player_x + 0.5, player_y + 0.5, player_z + 0.5 },

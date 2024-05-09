@@ -71,6 +71,7 @@ static bool load_texture(Texture *texture, const char *path);
 static void get_cube_face(Texture *texture, int tex_id, vec2 min, vec2 max);
 static void chunk_generate_face(GraphicsChunk *chunk, int x, int y, int z, ArrayBuffer *out);
 static void chunk_generate_face_water(GraphicsChunk *chunk, int x, int y, int z, ArrayBuffer *out);
+static void chunk_generate_face_grass(GraphicsChunk *chunk, int x, int y, int z, ArrayBuffer *buffer);
 
 static void faces_worker_func(WorkGroup *wg);
 
@@ -109,7 +110,14 @@ static int faces[BLOCK_LAST][6] = {
 	}, 
 	[BLOCK_WATER] = {
 		7, 7, 7, 7, 7, 7
-	}
+	},
+	[BLOCK_GRASS_BLADES] = {
+		8, 8, 8, 8, 8, 8
+	},
+	[BLOCK_ROSE] = {
+		9, 9, 9, 9, 9, 9
+	},
+	
 };
 
 static unsigned int chunk_program;
@@ -262,6 +270,10 @@ chunk_render_generate_faces(GraphicsChunk *chunk, ChunkFaceWork *w)
 				case BLOCK_WATER:
 					chunk_generate_face_water(chunk, x, y, z, &w->water_faces);
 					break;
+				case BLOCK_ROSE:
+				case BLOCK_GRASS_BLADES:
+					chunk_generate_face_grass(chunk, x, y, z, &w->solid_faces);
+					break;
 				default:
 					chunk_generate_face(chunk, x, y, z, &w->solid_faces);
 				}
@@ -324,6 +336,35 @@ load_texture(Texture *texture, const char *path)
 	return true;
 }
 
+void
+chunk_generate_face_grass(GraphicsChunk *chunk, int x, int y, int z, ArrayBuffer *buffer)
+{
+	vec2 min, max;
+	#define INSERT_VERTEX(...) \
+		arrbuf_insert(buffer, sizeof(Vertex), &(Vertex){ __VA_ARGS__ })
+
+	Block block = world_get_block(x + chunk->x, y + chunk->y, z + chunk->z);
+
+	float xx = x * BLOCK_SCALE;
+	float yy = y * BLOCK_SCALE;
+	float zz = z * BLOCK_SCALE;
+
+	get_cube_face(&terrain, block, min, max);
+	INSERT_VERTEX(.position = {  0 + xx,  0 + yy,  0 + zz }, .texcoord = { min[0], max[1] } );
+	INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  0 + yy,  BLOCK_SCALE + zz }, .texcoord = { max[0], max[1] } );
+	INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  BLOCK_SCALE + yy,  BLOCK_SCALE + zz }, .texcoord = { max[0], min[1] } );
+	INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  BLOCK_SCALE + yy,  BLOCK_SCALE + zz }, .texcoord = { max[0], min[1] } );
+	INSERT_VERTEX(.position = {  0 + xx,  BLOCK_SCALE + yy,  0 + zz }, .texcoord = { min[0], min[1] } );
+	INSERT_VERTEX(.position = {  0 + xx,  0 + yy,  0 + zz }, .texcoord = { min[0], max[1] } );
+	
+	INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  0 + yy,  0 + zz }, .texcoord = { min[0], max[1] } );
+	INSERT_VERTEX(.position = {  0 + xx,  0 + yy,  BLOCK_SCALE + zz }, .texcoord = { max[0], max[1] } );
+	INSERT_VERTEX(.position = {  0 + xx,  BLOCK_SCALE + yy,  BLOCK_SCALE + zz }, .texcoord = { max[0], min[1] } );
+	INSERT_VERTEX(.position = {  0 + xx,  BLOCK_SCALE + yy,  BLOCK_SCALE + zz }, .texcoord = { max[0], min[1] } );
+	INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  BLOCK_SCALE + yy,  0 + zz }, .texcoord = { min[0], min[1] } );
+	INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  0 + yy,  0 + zz }, .texcoord = { min[0], max[1] } );
+	
+}
 
 void
 chunk_generate_face(GraphicsChunk *chunk, int x, int y, int z, ArrayBuffer *buffer)
