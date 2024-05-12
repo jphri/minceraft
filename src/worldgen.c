@@ -25,6 +25,9 @@ static float octaved2(vec2 v, int seed);
 static float octaved3(vec3 v, int seed);
 static int   hash_coord(uint32_t s, int x, int y, int z);
 
+static void generate_block(int cx, int cy, int cz, int x, int y, int z, ChunkState state, Block block);
+static void generate_tree(int cx, int cy, int cz, int x, int y, int z);
+
 static float spline(float in, size_t nsplines, SplinePoint *splines);
 static float map(float l, float xmin, float xmax, float ymin, float ymax);
 
@@ -109,17 +112,26 @@ wgen_surface(int cx, int cy, int cz)
 void
 wgen_decorate(int cx, int cy, int cz)
 {
-	for(int z = cz; z < cz + CHUNK_SIZE; z++)
-	for(int y = cy; y < cy + CHUNK_SIZE; y++)
-	for(int x = cx; x < cx + CHUNK_SIZE; x++) {
+	for(int z = cz - CHUNK_SIZE; z < cz + CHUNK_SIZE * 2; z++)
+	for(int y = cy - CHUNK_SIZE; y < cy + CHUNK_SIZE * 2; y++)
+	for(int x = cx - CHUNK_SIZE; x < cx + CHUNK_SIZE * 2; x++) {
 
 		if((hash_coord(coord_hash, x, y, z) & 7) != 0) {
 			continue;
 		}
 
-		if(world_get(x, y, z, CSTATE_DECORATING) == BLOCK_NULL) {
+		if(world_get(x, y, z, CSTATE_SURFACED) == BLOCK_NULL) {
 			if(world_get(x, y - 1, z, CSTATE_SURFACED) == BLOCK_GRASS) {
-				world_set(x, y, z, CSTATE_DECORATING, (hash_coord(grass_flower_hash, x, y, z) & 7) != 0 ? BLOCK_GRASS_BLADES : BLOCK_ROSE);
+				switch(hash_coord(grass_flower_hash, x, y, z) & 3) {
+				case 0:
+					generate_block(cx, cy, cz, x, y, z, CSTATE_DECORATING, BLOCK_GRASS_BLADES);
+					break;
+				case 1:
+					generate_block(cx, cy, cz, x, y, z, CSTATE_DECORATING, BLOCK_ROSE);
+					break;
+				case 2:
+					generate_tree(cx, cy, cz, x, y, z);
+				}
 			}
 		}
 	}
@@ -206,4 +218,34 @@ hash_coord(uint32_t s, int x, int y, int z)
 	h = (hash(z * s) ^ h) * M;
 	
 	return h;
+}
+
+void
+generate_block(int cx, int cy, int cz, int x, int y, int z, ChunkState state, Block block)
+{
+	if(x < cx || x >= (cx + CHUNK_SIZE)) return;
+	if(y < cy || y >= (cy + CHUNK_SIZE)) return;
+	if(z < cz || z >= (cz + CHUNK_SIZE)) return;
+	
+	world_set(x, y, z, state, block);
+}
+
+void
+generate_tree(int cx, int cy, int cz, int x, int y, int z)
+{
+	for(int xx = x - 1; xx <= x + 1; xx++)
+	for(int zz = z - 1; zz <= z + 1; zz++) {
+		generate_block(cx, cy, cz, xx, y + 6, zz, CSTATE_DECORATING, BLOCK_STONE);
+	}
+
+	for(int xx = x - 2; xx <= x + 2; xx++)
+	for(int yy = 1; yy < 3; yy++)
+	for(int zz = z - 2; zz <= z + 2; zz++) {
+		generate_block(cx, cy, cz, xx, y + 6 - yy, zz, CSTATE_DECORATING, BLOCK_STONE);
+	}
+
+	for(int yy = y + 5; yy >= y; yy--) {
+		generate_block(cx, cy, cz, x, yy, z, CSTATE_DECORATING, BLOCK_STONE);
+	}
+	generate_block(cx, cy, cz, x, y - 1, z, CSTATE_DECORATING, BLOCK_DIRT);
 }
