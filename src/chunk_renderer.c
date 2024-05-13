@@ -117,7 +117,12 @@ static int faces[BLOCK_LAST][6] = {
 	[BLOCK_ROSE] = {
 		9, 9, 9, 9, 9, 9
 	},
-	
+	[BLOCK_WOOD] = {
+		11, 11, 11, 11, 10, 10,
+	},
+	[BLOCK_LEAVES] = {
+		12, 12, 12, 12, 12, 12
+	}
 };
 
 static unsigned int chunk_program;

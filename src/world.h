@@ -22,6 +22,8 @@ typedef enum {
 	BLOCK_WATER,
 	BLOCK_GRASS_BLADES,
 	BLOCK_ROSE,
+	BLOCK_WOOD,
+	BLOCK_LEAVES,
 	BLOCK_LAST,
 	BLOCK_UNLOADED = -1
 } Block;
@@ -50,6 +52,7 @@ typedef enum {
 typedef struct Chunk Chunk;
 struct Chunk {
 	short density[CHUNK_SIZE][CHUNK_SIZE][CHUNK_SIZE];
+	char surface[CHUNK_SIZE][CHUNK_SIZE][CHUNK_SIZE];
 	char blocks[CHUNK_SIZE][CHUNK_SIZE][CHUNK_SIZE];
 	ChunkState state;
 	int x, y, z;

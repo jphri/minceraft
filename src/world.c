@@ -40,6 +40,9 @@ static BlockProperties bprop[] = {
 	[BLOCK_ROSE] = {
 		.is_transparent = true,
 		.is_ghost = true,
+	},
+	[BLOCK_LEAVES] = {
+		.is_transparent = true
 	}
 };
 
@@ -115,7 +118,7 @@ world_get_density(int x, int y, int z, ChunkState state)
 	y &= BLOCK_MASK;
 	z &= BLOCK_MASK;
 
-	return (float)ch->density[z][y][x] / 256.0;
+	return (float)ch->density[z][y][x] / 1024.0;
 }
 
 void
@@ -132,7 +135,7 @@ world_set_density(int x, int y, int z, ChunkState state, float r)
 	y &= BLOCK_MASK;
 	z &= BLOCK_MASK;
 
-	r *= 256.0;
+	r *= 1024.0;
 	if(r > SHRT_MAX)
 		r = SHRT_MAX;
 	if(r < SHRT_MIN)

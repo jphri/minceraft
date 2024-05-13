@@ -120,8 +120,8 @@ wgen_decorate(int cx, int cy, int cz)
 			continue;
 		}
 
-		if(world_get(x, y, z, CSTATE_SURFACED) == BLOCK_NULL) {
-			if(world_get(x, y - 1, z, CSTATE_SURFACED) == BLOCK_GRASS) {
+		if(world_get_density(x, y, z, CSTATE_SHAPED) < 0 && world_get_density(x, y - 1, z, CSTATE_SHAPED) >= 0) {
+			if(y >= GROUND_HEIGHT) {
 				switch(hash_coord(grass_flower_hash, x, y, z) & 3) {
 				case 0:
 					generate_block(cx, cy, cz, x, y, z, CSTATE_DECORATING, BLOCK_GRASS_BLADES);
@@ -235,17 +235,17 @@ generate_tree(int cx, int cy, int cz, int x, int y, int z)
 {
 	for(int xx = x - 1; xx <= x + 1; xx++)
 	for(int zz = z - 1; zz <= z + 1; zz++) {
-		generate_block(cx, cy, cz, xx, y + 6, zz, CSTATE_DECORATING, BLOCK_STONE);
+		generate_block(cx, cy, cz, xx, y + 6, zz, CSTATE_DECORATING, BLOCK_LEAVES);
 	}
 
 	for(int xx = x - 2; xx <= x + 2; xx++)
 	for(int yy = 1; yy < 3; yy++)
 	for(int zz = z - 2; zz <= z + 2; zz++) {
-		generate_block(cx, cy, cz, xx, y + 6 - yy, zz, CSTATE_DECORATING, BLOCK_STONE);
+		generate_block(cx, cy, cz, xx, y + 6 - yy, zz, CSTATE_DECORATING, BLOCK_LEAVES);
 	}
 
 	for(int yy = y + 5; yy >= y; yy--) {
-		generate_block(cx, cy, cz, x, yy, z, CSTATE_DECORATING, BLOCK_STONE);
+		generate_block(cx, cy, cz, x, yy, z, CSTATE_DECORATING, BLOCK_WOOD);
 	}
 	generate_block(cx, cy, cz, x, y - 1, z, CSTATE_DECORATING, BLOCK_DIRT);
 }
