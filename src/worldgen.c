@@ -116,22 +116,25 @@ wgen_decorate(int cx, int cy, int cz)
 	for(int y = cy - CHUNK_SIZE; y < cy + CHUNK_SIZE * 2; y++)
 	for(int x = cx - CHUNK_SIZE; x < cx + CHUNK_SIZE * 2; x++) {
 
-		if((hash_coord(coord_hash, x, y, z) & 7) != 0) {
+		if((hash_coord(coord_hash, x, y, z) & 15) != 0) {
 			continue;
 		}
 
 		if(world_get_density(x, y, z, CSTATE_SHAPED) < 0 && world_get_density(x, y - 1, z, CSTATE_SHAPED) >= 0) {
+			
 			if(y >= GROUND_HEIGHT) {
-				switch(hash_coord(grass_flower_hash, x, y, z) & 3) {
-				case 0:
-					generate_block(cx, cy, cz, x, y, z, CSTATE_DECORATING, false, BLOCK_GRASS_BLADES);
-					break;
-				case 1:
-					generate_block(cx, cy, cz, x, y, z, CSTATE_DECORATING, false, BLOCK_ROSE);
-					break;
-				case 2:
+				int hash = hash_coord(grass_flower_hash, x, y, z);
+				if(!(hash & 7))
 					generate_tree(cx, cy, cz, x, y, z);
-				}
+				else
+					switch(hash & 1) {
+					case 0:
+						generate_block(cx, cy, cz, x, y, z, CSTATE_DECORATING, false, BLOCK_GRASS_BLADES);
+						break;
+					case 1:
+						generate_block(cx, cy, cz, x, y, z, CSTATE_DECORATING, false, BLOCK_ROSE);
+						break;
+					}
 			}
 		}
 	}
