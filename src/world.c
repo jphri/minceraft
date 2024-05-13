@@ -30,7 +30,7 @@ static void insert_chunk(Chunk *c);
 static void remove_chunk(Chunk *c);
 
 static BlockProperties bprop[] = {
-	[BLOCK_NULL]  = { .is_transparent = true },
+	[BLOCK_NULL]  = { .is_transparent = true, .is_ghost = true, .replaceable = true},
 	[BLOCK_GLASS] = { .is_transparent = true }, 
 	[BLOCK_WATER] = { .is_transparent = true }, 
 	[BLOCK_GRASS_BLADES] = {
@@ -40,9 +40,11 @@ static BlockProperties bprop[] = {
 	[BLOCK_ROSE] = {
 		.is_transparent = true,
 		.is_ghost = true,
+		.replaceable = true,	
 	},
 	[BLOCK_LEAVES] = {
-		.is_transparent = true
+		.is_transparent = true,
+		.replaceable = true
 	}
 };
 

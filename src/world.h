@@ -73,6 +73,7 @@ struct RaycastWorld {
 typedef struct {
 	bool is_transparent;
 	bool is_ghost;
+	bool replaceable;
 } BlockProperties;
 
 void world_init();
