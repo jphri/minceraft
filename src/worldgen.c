@@ -98,7 +98,7 @@ wgen_surface(int cx, int cy, int cz)
 			
 			switch(i) {
 			case 1:
-				world_set(x, y, z, CSTATE_SURFACING, BLOCK_GRASS);
+				world_set(x, y, z, CSTATE_SURFACING, y >= GROUND_HEIGHT ? BLOCK_GRASS : BLOCK_SAND);
 				break;
 			case 2:
 			case 3:
@@ -122,7 +122,7 @@ wgen_decorate(int cx, int cy, int cz)
 
 		if(world_get_density(x, y, z, CSTATE_SHAPED) < 0 && world_get_density(x, y - 1, z, CSTATE_SHAPED) >= 0) {
 			
-			if(y >= GROUND_HEIGHT) {
+			if(y > GROUND_HEIGHT) {
 				int hash = hash_coord(grass_flower_hash, x, y, z);
 				if(!(hash & 7))
 					generate_tree(cx, cy, cz, x, y, z);
