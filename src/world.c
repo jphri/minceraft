@@ -2,13 +2,15 @@
 #include "util.h"
 #include "world.h"
 #include "chunk_renderer.h"
+#include "worldgen.h"
 
+#include <assert.h>
 #include <math.h>
 #include <GL/glew.h>
 #include <pthread.h>
-#include <stdatomic.h>
 #include <stdbool.h>
 #include <unistd.h>
+#include <limits.h>
 
 
 typedef struct {
@@ -20,19 +22,30 @@ typedef struct {
 #define MAX_WORK 1024
 #define NUM_WORKERS 4
 
-
 static volatile Chunk *find_chunk(int x, int y, int z, ChunkState state);
 static volatile Chunk *chunk_gen(int x, int y, int z, ChunkState state);
 static volatile Chunk *allocate_chunk(int x, int y, int z);
-static void chunk_randomize(Chunk *chunk);
 
 static void insert_chunk(Chunk *c);
 static void remove_chunk(Chunk *c);
 
 static BlockProperties bprop[] = {
-	[BLOCK_NULL]  = { .is_transparent = true },
+	[BLOCK_NULL]  = { .is_transparent = true, .is_ghost = true, .replaceable = true},
 	[BLOCK_GLASS] = { .is_transparent = true }, 
-	[BLOCK_WATER] = { .is_transparent = true }
+	[BLOCK_WATER] = { .is_transparent = true }, 
+	[BLOCK_GRASS_BLADES] = {
+		.is_transparent = true, 
+		.is_ghost = true
+	},
+	[BLOCK_ROSE] = {
+		.is_transparent = true,
+		.is_ghost = true,
+		.replaceable = true,	
+	},
+	[BLOCK_LEAVES] = {
+		.is_transparent = true,
+		.replaceable = true
+	}
 };
 
 static int running;
@@ -64,46 +77,84 @@ world_terminate()
 	free(chunks);
 }
 
-void
-chunk_randomize(Chunk *chunk)
-{
-	for(int z = 0; z < CHUNK_SIZE; z++)
-	for(int y = 0; y < CHUNK_SIZE; y++)
-	for(int x = 0; x < CHUNK_SIZE; x++) {
-		if(!(rand() & 15) && x > 1 && x < 14 && z > 1 && z < 14) {
-			chunk->blocks[x][y][z] = rand() % (BLOCK_LAST - BLOCK_GRASS) + BLOCK_GRASS;
-		} else {
-			chunk->blocks[x][y][z] = 0;
-		}
-	}
-}
-
 Block
 world_get_block(int x, int y, int z)
 {
-	int chunk_x = x & CHUNK_MASK;
-	int chunk_y = y & CHUNK_MASK;
-	int chunk_z = z & CHUNK_MASK;
-
-	volatile Chunk *ch;
-	while((ch = chunk_gen(chunk_x, chunk_y, chunk_z, CSTATE_MERGED)) == NULL);
-	
-	x &= BLOCK_MASK;
-	y &= BLOCK_MASK;
-	z &= BLOCK_MASK;
-	
-	return ch->blocks[z][y][x];
+	return world_get(x, y, z, CSTATE_DECORATED);
 }
 
 void
 world_set_block(int x, int y, int z, Block block)
 {
+	world_set(x, y, z, CSTATE_ALLOCATED, block);
+}
+
+Block
+world_get(int x, int y, int z, ChunkState state)
+{
 	int chunk_x = x & CHUNK_MASK;
 	int chunk_y = y & CHUNK_MASK;
 	int chunk_z = z & CHUNK_MASK;
 
 	volatile Chunk *ch;
-	while((ch = chunk_gen(chunk_x, chunk_y, chunk_z, CSTATE_ALLOCATED)) == NULL);
+	while((ch = chunk_gen(chunk_x, chunk_y, chunk_z, state)) == NULL);
+
+	x &= BLOCK_MASK;
+	y &= BLOCK_MASK;
+	z &= BLOCK_MASK;
+
+	return ch->blocks[z][y][x];
+}
+
+float
+world_get_density(int x, int y, int z, ChunkState state)
+{
+	int chunk_x = x & CHUNK_MASK;
+	int chunk_y = y & CHUNK_MASK;
+	int chunk_z = z & CHUNK_MASK;
+
+	volatile Chunk *ch;
+	while((ch = chunk_gen(chunk_x, chunk_y, chunk_z, state)) == NULL);
+
+	x &= BLOCK_MASK;
+	y &= BLOCK_MASK;
+	z &= BLOCK_MASK;
+
+	return (float)ch->density[z][y][x] / 1024.0;
+}
+
+void
+world_set_density(int x, int y, int z, ChunkState state, float r)
+{
+	int chunk_x = x & CHUNK_MASK;
+	int chunk_y = y & CHUNK_MASK;
+	int chunk_z = z & CHUNK_MASK;
+
+	volatile Chunk *ch;
+	while((ch = chunk_gen(chunk_x, chunk_y, chunk_z, state)) == NULL);
+
+	x &= BLOCK_MASK;
+	y &= BLOCK_MASK;
+	z &= BLOCK_MASK;
+
+	r *= 1024.0;
+	if(r > SHRT_MAX)
+		r = SHRT_MAX;
+	if(r < SHRT_MIN)
+		r = SHRT_MIN;
+
+	ch->density[z][y][x] = (short)r;
+}
+
+void
+world_set(int x, int y, int z, ChunkState state, Block block)
+{
+	int chunk_x = x & CHUNK_MASK;
+	int chunk_y = y & CHUNK_MASK;
+	int chunk_z = z & CHUNK_MASK;
+
+	volatile Chunk *ch;
+	while((ch = chunk_gen(chunk_x, chunk_y, chunk_z, state)) == NULL);
 
 	x &= BLOCK_MASK;
 	y &= BLOCK_MASK;
@@ -263,33 +314,39 @@ chunk_gen(int x, int y, int z, ChunkState target_state)
 		case STATE: \
 			if(target_state <= STATE) \
 				break;
+	
+	#define MAKE_ING_STATE(STATE) \
+		case STATE: \
+			if(target_state <= STATE) \
+				return c; \
+			else \
+			 	return NULL;
 
 	switch(c->state) {
 	MAKE_STATE(CSTATE_FREE)
 		c->state = CSTATE_ALLOCATED;
 
 	MAKE_STATE(CSTATE_ALLOCATED)
-		c->state = CSTATE_GENERATING;
-		chunk_randomize(c);
-		c->state = CSTATE_GENERATED;
+		c->state = CSTATE_SHAPING;
+		wgen_shape(c->x, c->y, c->z);
+		c->state = CSTATE_SHAPED;
 
-	MAKE_STATE(CSTATE_GENERATED)
-		c->state = CSTATE_MERGING;
-		for(int z = -CHUNK_SIZE; z <= CHUNK_SIZE; z += CHUNK_SIZE)
-		for(int y = -CHUNK_SIZE; y <= CHUNK_SIZE; y += CHUNK_SIZE)
-		for(int x = -CHUNK_SIZE; x <= CHUNK_SIZE; x += CHUNK_SIZE) {
-			chunk_gen(x + c->x, y + c->y, z + c->z, CSTATE_GENERATED);
-		}
-		c->state = CSTATE_MERGED;
-	MAKE_STATE(CSTATE_MERGED)
+	MAKE_STATE(CSTATE_SHAPED)
+		c->state = CSTATE_SURFACING;
+		wgen_surface(c->x, c->y, c->z);
+		c->state = CSTATE_SURFACED;
+		
+	MAKE_STATE(CSTATE_SURFACED)
+		c->state = CSTATE_DECORATING;
+		wgen_decorate(c->x, c->y, c->z);
+		c->state = CSTATE_DECORATED;
+
+	MAKE_STATE(CSTATE_DECORATED)
 		break;
 	
-	default:
-		/* 
-			-ing states are ignored and returns null for
-			possible spinlock implementations.
-		*/
-		return NULL;
+	MAKE_ING_STATE(CSTATE_SHAPING);
+	MAKE_ING_STATE(CSTATE_SURFACING);
+	MAKE_ING_STATE(CSTATE_DECORATING);
 	}
 
 	return c;
@@ -314,6 +371,8 @@ volatile Chunk *
 allocate_chunk(int x, int y, int z)
 {
 	Chunk *c;
+
+	assert(max_chunk_id < MAX_CHUNKS);
 	pthread_mutex_lock(&chunk_mutex);
 	for(c = chunks; c <= chunks + max_chunk_id; c++) {
 		if(c->free) {
@@ -337,7 +396,7 @@ allocate_chunk(int x, int y, int z)
 	c->x = x;
 	c->y = y;
 	c->z = z;
-	c->state = CSTATE_ALLOCATED;
+	c->state = CSTATE_FREE;
 	insert_chunk(c);
 	pthread_mutex_unlock(&chunk_mutex);
 	return c;

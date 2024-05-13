@@ -17,6 +17,8 @@ typedef struct RelPtr RelPtr;
 typedef struct Allocator Allocator;
 typedef struct FileBuffer FileBuffer;
 typedef struct WorkGroup WorkGroup;
+typedef uint64_t PCG32State;
+
 typedef uint_fast32_t ObjectID;
 
 struct WorkGroup {
@@ -184,6 +186,13 @@ void       wg_terminate(WorkGroup *wg);
 bool       wg_send(WorkGroup *wg, void *work_data);
 bool       wg_recv(WorkGroup *wg, void *data_in);
 bool       wg_recv_nonblock(WorkGroup *wg, void *data);
+
+uint32_t rotr32(uint32_t x, int r);
+uint32_t rotl32(uint32_t x, int r);
+uint64_t hash_string(const char *str);
+
+void init_pcg32(PCG32State *state);
+uint32_t rand_pcg32(PCG32State *state);
 
 static inline void *to_ptr(RelPtr ptr) {
 	return ((unsigned char*)*ptr.base_pointer) + ptr.offset;

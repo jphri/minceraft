@@ -20,6 +20,10 @@ typedef enum {
 	BLOCK_PLANKS,
 	BLOCK_GLASS,
 	BLOCK_WATER,
+	BLOCK_GRASS_BLADES,
+	BLOCK_ROSE,
+	BLOCK_WOOD,
+	BLOCK_LEAVES,
 	BLOCK_LAST,
 	BLOCK_UNLOADED = -1
 } Block;
@@ -33,18 +37,23 @@ typedef enum {
 	TOP,
 } Direction;
 
+/* order is important */
 typedef enum {
 	CSTATE_FREE,
 	CSTATE_ALLOCATED,
-	CSTATE_GENERATING,
-	CSTATE_GENERATED,
-	CSTATE_MERGING, 
-	CSTATE_MERGED,
+	CSTATE_SHAPING,
+	CSTATE_SHAPED,
+	CSTATE_SURFACING,
+	CSTATE_SURFACED,
+	CSTATE_DECORATING,
+	CSTATE_DECORATED,
 } ChunkState;
 
 typedef struct Chunk Chunk;
 struct Chunk {
-	int blocks[CHUNK_SIZE][CHUNK_SIZE][CHUNK_SIZE];
+	short density[CHUNK_SIZE][CHUNK_SIZE][CHUNK_SIZE];
+	char surface[CHUNK_SIZE][CHUNK_SIZE][CHUNK_SIZE];
+	char blocks[CHUNK_SIZE][CHUNK_SIZE][CHUNK_SIZE];
 	ChunkState state;
 	int x, y, z;
 	bool free;
@@ -63,6 +72,8 @@ struct RaycastWorld {
 
 typedef struct {
 	bool is_transparent;
+	bool is_ghost;
+	bool replaceable;
 } BlockProperties;
 
 void world_init();
@@ -73,6 +84,12 @@ void world_enqueue_unload(int x, int y, int z);
 
 Block world_get_block(int x, int y, int z);
 void  world_set_block(int x, int y, int z, Block block);
+
+Block world_get(int x, int y, int z, ChunkState state);
+void  world_set(int x, int y, int z, ChunkState state, Block block);
+
+float world_get_density(int x, int y, int z, ChunkState state);
+void  world_set_density(int x, int y, int z, ChunkState state, float r);
 
 RaycastWorld world_begin_raycast(vec3 position, vec3 direction, float max_distance);
 int          world_raycast(RaycastWorld *rw);

@@ -71,6 +71,7 @@ static bool load_texture(Texture *texture, const char *path);
 static void get_cube_face(Texture *texture, int tex_id, vec2 min, vec2 max);
 static void chunk_generate_face(GraphicsChunk *chunk, int x, int y, int z, ArrayBuffer *out);
 static void chunk_generate_face_water(GraphicsChunk *chunk, int x, int y, int z, ArrayBuffer *out);
+static void chunk_generate_face_grass(GraphicsChunk *chunk, int x, int y, int z, ArrayBuffer *buffer);
 
 static void faces_worker_func(WorkGroup *wg);
 
@@ -109,6 +110,18 @@ static int faces[BLOCK_LAST][6] = {
 	}, 
 	[BLOCK_WATER] = {
 		7, 7, 7, 7, 7, 7
+	},
+	[BLOCK_GRASS_BLADES] = {
+		8, 8, 8, 8, 8, 8
+	},
+	[BLOCK_ROSE] = {
+		9, 9, 9, 9, 9, 9
+	},
+	[BLOCK_WOOD] = {
+		11, 11, 11, 11, 10, 10,
+	},
+	[BLOCK_LEAVES] = {
+		12, 12, 12, 12, 12, 12
 	}
 };
 
@@ -262,6 +275,10 @@ chunk_render_generate_faces(GraphicsChunk *chunk, ChunkFaceWork *w)
 				case BLOCK_WATER:
 					chunk_generate_face_water(chunk, x, y, z, &w->water_faces);
 					break;
+				case BLOCK_ROSE:
+				case BLOCK_GRASS_BLADES:
+					chunk_generate_face_grass(chunk, x, y, z, &w->solid_faces);
+					break;
 				default:
 					chunk_generate_face(chunk, x, y, z, &w->solid_faces);
 				}
@@ -324,6 +341,35 @@ load_texture(Texture *texture, const char *path)
 	return true;
 }
 
+void
+chunk_generate_face_grass(GraphicsChunk *chunk, int x, int y, int z, ArrayBuffer *buffer)
+{
+	vec2 min, max;
+	#define INSERT_VERTEX(...) \
+		arrbuf_insert(buffer, sizeof(Vertex), &(Vertex){ __VA_ARGS__ })
+
+	Block block = world_get_block(x + chunk->x, y + chunk->y, z + chunk->z);
+
+	float xx = x * BLOCK_SCALE;
+	float yy = y * BLOCK_SCALE;
+	float zz = z * BLOCK_SCALE;
+
+	get_cube_face(&terrain, block, min, max);
+	INSERT_VERTEX(.position = {  0 + xx,  0 + yy,  0 + zz }, .texcoord = { min[0], max[1] } );
+	INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  0 + yy,  BLOCK_SCALE + zz }, .texcoord = { max[0], max[1] } );
+	INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  BLOCK_SCALE + yy,  BLOCK_SCALE + zz }, .texcoord = { max[0], min[1] } );
+	INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  BLOCK_SCALE + yy,  BLOCK_SCALE + zz }, .texcoord = { max[0], min[1] } );
+	INSERT_VERTEX(.position = {  0 + xx,  BLOCK_SCALE + yy,  0 + zz }, .texcoord = { min[0], min[1] } );
+	INSERT_VERTEX(.position = {  0 + xx,  0 + yy,  0 + zz }, .texcoord = { min[0], max[1] } );
+	
+	INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  0 + yy,  0 + zz }, .texcoord = { min[0], max[1] } );
+	INSERT_VERTEX(.position = {  0 + xx,  0 + yy,  BLOCK_SCALE + zz }, .texcoord = { max[0], max[1] } );
+	INSERT_VERTEX(.position = {  0 + xx,  BLOCK_SCALE + yy,  BLOCK_SCALE + zz }, .texcoord = { max[0], min[1] } );
+	INSERT_VERTEX(.position = {  0 + xx,  BLOCK_SCALE + yy,  BLOCK_SCALE + zz }, .texcoord = { max[0], min[1] } );
+	INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  BLOCK_SCALE + yy,  0 + zz }, .texcoord = { min[0], min[1] } );
+	INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  0 + yy,  0 + zz }, .texcoord = { min[0], max[1] } );
+	
+}
 
 void
 chunk_generate_face(GraphicsChunk *chunk, int x, int y, int z, ArrayBuffer *buffer)
@@ -411,12 +457,13 @@ chunk_generate_face_water(GraphicsChunk *chunk, int x, int y, int z, ArrayBuffer
 		arrbuf_insert(buffer, sizeof(Vertex), &(Vertex){ __VA_ARGS__ })
 
 	#define PROP_AT(X, Y, Z) block_properties(world_get_block(X + chunk->x, Y + chunk->y, Z + chunk->z))
+	#define BLOCK_AT(X, Y, Z) world_get_block(X + chunk->x, Y + chunk->y, Z + chunk->z)
 
 	float xx = x * BLOCK_SCALE;
 	float yy = y * BLOCK_SCALE;
 	float zz = z * BLOCK_SCALE;
 
-	if(PROP_AT(x, y, z - 1)->is_transparent) {
+	if(PROP_AT(x, y, z - 1)->is_transparent && BLOCK_AT(x, y, z - 1) != BLOCK_WATER) {
 		get_cube_face(&terrain, faces[block][BACK], min, max);
 		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  0 + yy,  0 + zz }, .texcoord = { min[0], max[1] } );
 		INSERT_VERTEX(.position = {  0 + xx,  0 + yy,  0 + zz }, .texcoord = { max[0], max[1] } );
@@ -426,7 +473,7 @@ chunk_generate_face_water(GraphicsChunk *chunk, int x, int y, int z, ArrayBuffer
 		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  0 + yy,  0 + zz }, .texcoord = { min[0], max[1] } );
 	}
 
-	if(PROP_AT(x + 1, y, z)->is_transparent) {
+	if(PROP_AT(x + 1, y, z)->is_transparent && BLOCK_AT(x + 1, y, z) != BLOCK_WATER) {
 		get_cube_face(&terrain, faces[block][RIGHT], min, max);
 		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  0 + yy,  BLOCK_SCALE + zz }, .texcoord = { min[0], max[1] } );
 		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  0 + yy,  0 + zz }, .texcoord = { max[0], max[1] } );
@@ -436,7 +483,7 @@ chunk_generate_face_water(GraphicsChunk *chunk, int x, int y, int z, ArrayBuffer
 		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  0 + yy,  BLOCK_SCALE + zz }, .texcoord = { min[0], max[1] } );
 	}
 
-	if(PROP_AT(x, y, z + 1)->is_transparent) {
+	if(PROP_AT(x, y, z + 1)->is_transparent && BLOCK_AT(x, y, z + 1) != BLOCK_WATER) {
 		get_cube_face(&terrain, faces[block][FRONT], min, max);
 		INSERT_VERTEX(.position = {  0 + xx,  0 + yy, BLOCK_SCALE + zz }, .texcoord = { min[0], max[1] } );
 		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  0 + yy, BLOCK_SCALE + zz }, .texcoord = { max[0], max[1] } );
@@ -446,7 +493,7 @@ chunk_generate_face_water(GraphicsChunk *chunk, int x, int y, int z, ArrayBuffer
 		INSERT_VERTEX(.position = {  0 + xx,  0 + yy, BLOCK_SCALE + zz }, .texcoord = { min[0], max[1] } );
 	}
 
-	if(PROP_AT(x - 1, y, z)->is_transparent) {
+	if(PROP_AT(x - 1, y, z)->is_transparent && BLOCK_AT(x - 1, y, z) != BLOCK_WATER) {
 		get_cube_face(&terrain, faces[block][LEFT], min, max);
 		INSERT_VERTEX(.position = {  0 + xx,  0 + yy,  0 + zz }, .texcoord = { min[0], max[1] } );
 		INSERT_VERTEX(.position = {  0 + xx,  0 + yy,  BLOCK_SCALE + zz }, .texcoord = { max[0], max[1] } );
@@ -456,7 +503,7 @@ chunk_generate_face_water(GraphicsChunk *chunk, int x, int y, int z, ArrayBuffer
 		INSERT_VERTEX(.position = {  0 + xx,  0 + yy,  0 + zz }, .texcoord = { min[0], max[1] } );
 	}
 
-	if(PROP_AT(x, y - 1, z)->is_transparent) {
+	if(PROP_AT(x, y - 1, z)->is_transparent && BLOCK_AT(x, y - 1, z) != BLOCK_WATER) {
 		get_cube_face(&terrain, faces[block][BOTTOM], min, max);
 		INSERT_VERTEX(.position = {  0 + xx,  0 + yy,  0 + zz }, .texcoord = { min[0], max[1] } );
 		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  0 + yy,  0 + zz }, .texcoord = { max[0], max[1] } );
@@ -466,7 +513,7 @@ chunk_generate_face_water(GraphicsChunk *chunk, int x, int y, int z, ArrayBuffer
 		INSERT_VERTEX(.position = {  0 + xx,  0 + yy,  0 + zz }, .texcoord = { min[0], max[1] } );
 	}
 
-	//if(y == LAST_BLOCK || PROP_AT([z][y + 1][x])->is_transparent) {
+	if(BLOCK_AT(x, y + 1, z) != BLOCK_WATER) {
 		get_cube_face(&terrain, faces[block][TOP], min, max);
 		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  BLOCK_SCALE + yy - WATER_OFFSET,  0 + zz }, .texcoord = { min[0], max[1] } );
 		INSERT_VERTEX(.position = {  0 + xx,  BLOCK_SCALE + yy - WATER_OFFSET,  0 + zz }, .texcoord = { max[0], max[1] } );
@@ -474,7 +521,7 @@ chunk_generate_face_water(GraphicsChunk *chunk, int x, int y, int z, ArrayBuffer
 		INSERT_VERTEX(.position = {  0 + xx,  BLOCK_SCALE + yy - WATER_OFFSET,  BLOCK_SCALE + zz }, .texcoord = { max[0], min[1] } );
 		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  BLOCK_SCALE + yy - WATER_OFFSET,  BLOCK_SCALE + zz }, .texcoord = { min[0], min[1] } );
 		INSERT_VERTEX(.position = {  BLOCK_SCALE + xx,  BLOCK_SCALE + yy - WATER_OFFSET,  0 + zz }, .texcoord = { min[0], max[1] } );
-	//}
+	}
 
 	#undef PROP_AT
 }

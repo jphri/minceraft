@@ -10,6 +10,7 @@
 #include "util.h"
 #include "glutil.h"
 #include "linmath.h"
+#include "worldgen.h"
 #include "world.h"
 #include "collision.h"
 
@@ -81,8 +82,10 @@ main()
 	player.yaw = 0.0;
 	player.pitch = 0.0;
 	player.position[0] = 0;
-	player.position[1] = 30;
+	player.position[1] = 80;
 	player.position[2] = 0;
+
+	wgen_set_seed("Gente que passa o dia inteiro no twitter e em chan não deveria nem ter direito a voto.");
 
 	glfwShowWindow(window);
 	pre_time = glfwGetTime();
@@ -99,6 +102,7 @@ main()
 
 		glfwGetWindowSize(window, &w, &h);
 		glViewport(0, 0, w, h);
+		glClearColor(0.5, 0.7, 0.9, 1.0);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		chunk_render_set_camera(player.eye_position, player.camera_view, (float)w/h, 64);
 		chunk_render();
@@ -197,7 +201,7 @@ player_update(Player *player, float delta)
 			int player_z = floorf(z + player->position[2]);
 
 			Block b = world_get_block(player_x, player_y, player_z);
-			if(b > 0) {
+			if(b > 0 && !block_properties(b)->is_ghost) {
 				Contact c;
 				AABB block_aabb = {
 					.position = { player_x + 0.5, player_y + 0.5, player_z + 0.5 },
@@ -278,6 +282,7 @@ mouse_click_callback(GLFWwindow *window, int button, int action, int mods)
 		}
 	} else if(button == 2 && action == GLFW_PRESS) {
 		player.position[0] += 10000;
+		player_update(&player, 0);
 	}
 }
 
