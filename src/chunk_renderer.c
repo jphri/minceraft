@@ -82,16 +82,6 @@ static void load_programs();
 static void load_buffers();
 static void load_textures();
 
-static Vertex quad_data[] = {
-	{ { -1.0, -1.0,  0.0 }, { 0.0, 0.0 } },
-	{ {  1.0, -1.0,  0.0 }, { 1.0, 0.0 } },
-	{ {  1.0,  1.0,  0.0 }, { 1.0, 1.0 } },
-
-	{ {  1.0,  1.0,  0.0 }, { 1.0, 1.0 } },
-	{ { -1.0,  1.0,  0.0 }, { 0.0, 1.0 } },
-	{ { -1.0, -1.0,  0.0 }, { 0.0, 0.0 } },
-};
-
 static int faces[BLOCK_LAST][6] = {
 	[BLOCK_GRASS] = {
 		2, 2, 2, 2, 0, 1,
@@ -131,7 +121,6 @@ static int faces[BLOCK_LAST][6] = {
 static unsigned int chunk_program;
 static unsigned int projection_uni, view_uni, terrain_uni, chunk_position_uni,
 					alpha_uni;
-static unsigned int quad_buffer, quad_vao;
 static mat4x4 projection, view;
 static Texture terrain;
 
@@ -292,28 +281,15 @@ void
 chunk_render_generate_buffers(ChunkFaceWork *w)
 {
 	GraphicsChunk *chunk = w->chunk;
-	if(glIsBuffer(chunk->chunk_vbo)) {
-		glDeleteBuffers(1, &chunk->chunk_vbo);
-		glDeleteVertexArrays(1, &chunk->chunk_vao);
-
-		glDeleteBuffers(1, &chunk->water_vbo);
-		glDeleteVertexArrays(1, &chunk->water_vao);
-	}
 
 	chunk->vert_count = arrbuf_length(&w->solid_faces, sizeof(Vertex));
 	chunk->water_vert_count = arrbuf_length(&w->water_faces, sizeof(Vertex));
 
-	chunk->chunk_vbo = ugl_create_buffer(GL_STATIC_DRAW, w->solid_faces.size, w->solid_faces.data);
-	chunk->chunk_vao = ugl_create_vao(2, (VaoSpec[]){
-		{ 0, 3, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, position), 0, chunk->chunk_vbo },
-		{ 1, 2, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, texcoord), 0, chunk->chunk_vbo },
-	});
-
-	chunk->water_vbo = ugl_create_buffer(GL_STATIC_DRAW, w->water_faces.size, w->water_faces.data);
-	chunk->water_vao = ugl_create_vao(2, (VaoSpec[]){
-		{ 0, 3, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, position), 0, chunk->water_vbo },
-		{ 1, 2, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, texcoord), 0, chunk->water_vbo },
-	});
+	glBindBuffer(GL_ARRAY_BUFFER, chunk->chunk_vbo);
+	glBufferData(GL_ARRAY_BUFFER, w->solid_faces.size, w->solid_faces.data, GL_STATIC_DRAW);
+	glBindBuffer(GL_ARRAY_BUFFER, chunk->water_vbo);
+	glBufferData(GL_ARRAY_BUFFER, w->water_faces.size, w->water_faces.data, GL_STATIC_DRAW);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
 bool
@@ -556,11 +532,21 @@ load_programs()
 void
 load_buffers()
 {
-	quad_buffer = ugl_create_buffer(GL_STATIC_DRAW, sizeof(quad_data), quad_data);
-	quad_vao = ugl_create_vao(2, (VaoSpec[]){
-		{ 0, 3, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, position), 0, quad_buffer },
-		{ 1, 2, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, texcoord), 0, quad_buffer },
-	});
+	for(int i = 0; i < MAX_CHUNKS; i++) {
+		GraphicsChunk *chunk = chunks + i;
+
+		glGenBuffers(1, &chunk->chunk_vbo);
+		chunk->chunk_vao = ugl_create_vao(2, (VaoSpec[]){
+			{ 0, 3, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, position), 0, chunk->chunk_vbo },
+			{ 1, 2, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, texcoord), 0, chunk->chunk_vbo },
+		});
+
+		glGenBuffers(1, &chunk->water_vbo);
+		chunk->water_vao = ugl_create_vao(2, (VaoSpec[]){
+			{ 0, 3, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, position), 0, chunk->water_vbo },
+			{ 1, 2, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, texcoord), 0, chunk->water_vbo },
+		});
+	}
 	UGL_ASSERT();
 }
 
