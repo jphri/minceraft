@@ -1,7 +1,7 @@
 #ifndef WORLD_H
 #define WORLD_H
 
-#define BLOCK_BITS  4
+#define BLOCK_BITS  5
 #define CHUNK_SIZE  (1 << BLOCK_BITS)
 #define LAST_BLOCK  (CHUNK_SIZE - 1)
 #define BLOCK_MASK  (CHUNK_SIZE - 1)

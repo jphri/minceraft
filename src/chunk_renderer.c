@@ -47,6 +47,9 @@ typedef struct {
 #define WATER_OFFSET 0.1
 #define MAX_CHUNKS 8192
 #define MAX_WORK 1024
+#define GCHUNK_SIZE 64
+#define GBLOCK_MASK  (GCHUNK_SIZE - 1)
+#define GCHUNK_MASK ~GBLOCK_MASK
 
 #ifndef M_PI
 #define M_PI 3.1415926535
@@ -179,13 +182,13 @@ chunk_render_set_camera(vec3 position, vec3 look_at, float aspect, float rdist)
 	vec3 scene_center;
 	
 	vec3_add(scene_center, position, look_at);
-	mat4x4_perspective(projection, M_PI_2, aspect, 0.001, 120.0);
+	mat4x4_perspective(projection, M_PI_2, aspect, 0.001, 1000.0);
 	mat4x4_look_at(view, position, scene_center, (vec3){ 0.0, 1.0, 0.0 });
 
-	int nchunk_x = (int)floorf(position[0]) & CHUNK_MASK;
-	int nchunk_y = (int)floorf(position[1]) & CHUNK_MASK;
-	int nchunk_z = (int)floorf(position[2]) & CHUNK_MASK;
-	int nrend    = (int)floorf(rdist) & CHUNK_MASK;
+	int nchunk_x = (int)floorf(position[0]) & GCHUNK_MASK;
+	int nchunk_y = (int)floorf(position[1]) & GCHUNK_MASK;
+	int nchunk_z = (int)floorf(position[2]) & GCHUNK_MASK;
+	int nrend    = (int)floorf(rdist) & GCHUNK_MASK;
 
 	if(nchunk_x != chunk_x || nchunk_y != chunk_y || nchunk_z != chunk_z || render_distance != nrend) {
 		chunk_x = nchunk_x;
@@ -193,9 +196,9 @@ chunk_render_set_camera(vec3 position, vec3 look_at, float aspect, float rdist)
 		chunk_z = nchunk_z;
 		render_distance = nrend;
 
-		for(int x = -render_distance; x <= render_distance; x += CHUNK_SIZE)
-		for(int y = -render_distance; y <= render_distance; y += CHUNK_SIZE)
-		for(int z = -render_distance; z <= render_distance; z += CHUNK_SIZE) {
+		for(int x = -render_distance; x <= render_distance; x += GCHUNK_SIZE)
+		for(int y = -render_distance; y <= render_distance; y += GCHUNK_SIZE)
+		for(int z = -render_distance; z <= render_distance; z += GCHUNK_SIZE) {
 			
 			wg_send(facesg, &(ChunkFaceWork){
 				.x = (nchunk_x + x),
@@ -265,9 +268,9 @@ chunk_render_render_water_chunk(GraphicsChunk *c)
 void
 chunk_render_generate_faces(GraphicsChunk *chunk, ChunkFaceWork *w)
 {
-	for(int z = 0; z < CHUNK_SIZE; z++)
-		for(int y = 0; y < CHUNK_SIZE; y++)
-			for(int x = 0; x < CHUNK_SIZE; x++) {
+	for(int z = 0; z < GCHUNK_SIZE; z++)
+		for(int y = 0; y < GCHUNK_SIZE; y++)
+			for(int x = 0; x < GCHUNK_SIZE; x++) {
 				Block block = world_get_block(x + chunk->x, y + chunk->y, z + chunk->z);
 				if(block <= 0)
 					continue;
@@ -591,18 +594,18 @@ chunk_render()
 	}
 
 	chunk_render_update();
-	for(int zz = -render_distance; zz < render_distance; zz += CHUNK_SIZE)
-	for(int yy = -render_distance; yy < render_distance; yy += CHUNK_SIZE)
-	for(int xx = -render_distance; xx < render_distance; xx += CHUNK_SIZE) {
+	for(int zz = -render_distance; zz < render_distance; zz += GCHUNK_SIZE)
+	for(int yy = -render_distance; yy < render_distance; yy += GCHUNK_SIZE)
+	for(int xx = -render_distance; xx < render_distance; xx += GCHUNK_SIZE) {
 		GraphicsChunk *c = find_chunk(xx + chunk_x, yy + chunk_y, zz + chunk_z);
 		if(c) {
 			chunk_render_render_solid_chunk(c);
 		}
 	}
 	
-	for(int zz = -render_distance; zz < render_distance; zz += CHUNK_SIZE)
-	for(int yy = -render_distance; yy < render_distance; yy += CHUNK_SIZE)
-	for(int xx = -render_distance; xx < render_distance; xx += CHUNK_SIZE) {
+	for(int zz = -render_distance; zz < render_distance; zz += GCHUNK_SIZE)
+	for(int yy = -render_distance; yy < render_distance; yy += GCHUNK_SIZE)
+	for(int xx = -render_distance; xx < render_distance; xx += GCHUNK_SIZE) {
 		GraphicsChunk *c = find_chunk(xx + chunk_x, yy + chunk_y, zz + chunk_z);
 		if(c) {
 			chunk_render_render_water_chunk(c);
@@ -751,13 +754,13 @@ find_or_allocate_chunk(int x, int y, int z)
 void
 chunk_render_request_update_block(int x, int y, int z)
 {
-	int chunk_x = x & CHUNK_MASK;
-	int chunk_y = y & CHUNK_MASK;
-	int chunk_z = z & CHUNK_MASK;
+	int chunk_x = x & GCHUNK_MASK;
+	int chunk_y = y & GCHUNK_MASK;
+	int chunk_z = z & GCHUNK_MASK;
 
-	int block_x = x & BLOCK_MASK;
-	int block_y = y & BLOCK_MASK;
-	int block_z = z & BLOCK_MASK;
+	int block_x = x & GBLOCK_MASK;
+	int block_y = y & GBLOCK_MASK;
+	int block_z = z & GBLOCK_MASK;
 
 	wg_send(facesg, &(ChunkFaceWork){
 		.x = chunk_x,
@@ -768,16 +771,16 @@ chunk_render_request_update_block(int x, int y, int z)
 
 	if(block_x == 0) {
 		wg_send(facesg, &(ChunkFaceWork){
-			.x = chunk_x - CHUNK_SIZE,
+			.x = chunk_x - GCHUNK_SIZE,
 			.y = chunk_y, 
 			.z = chunk_z,
 			.mode = FORCED
 		});
 	}
 
-	if(block_x == (CHUNK_SIZE - 1)) {
+	if(block_x == (GCHUNK_SIZE - 1)) {
 		wg_send(facesg, &(ChunkFaceWork){
-			.x = chunk_x + CHUNK_SIZE,
+			.x = chunk_x + GCHUNK_SIZE,
 			.y = chunk_y, 
 			.z = chunk_z,
 			.mode = FORCED
@@ -787,16 +790,16 @@ chunk_render_request_update_block(int x, int y, int z)
 	if(block_y == 0) {
 		wg_send(facesg, &(ChunkFaceWork){
 			.x = chunk_x,
-			.y = chunk_y - CHUNK_SIZE, 
+			.y = chunk_y - GCHUNK_SIZE, 
 			.z = chunk_z,
 			.mode = FORCED
 		});
 	}
 
-	if(block_y == (CHUNK_SIZE - 1)) {
+	if(block_y == (GCHUNK_SIZE - 1)) {
 		wg_send(facesg, &(ChunkFaceWork){
 			.x = chunk_x,
-			.y = chunk_y + CHUNK_SIZE, 
+			.y = chunk_y + GCHUNK_SIZE, 
 			.z = chunk_z,
 			.mode = FORCED
 		});
@@ -806,16 +809,16 @@ chunk_render_request_update_block(int x, int y, int z)
 		wg_send(facesg, &(ChunkFaceWork){
 			.x = chunk_x,
 			.y = chunk_y, 
-			.z = chunk_z - CHUNK_SIZE,
+			.z = chunk_z - GCHUNK_SIZE,
 			.mode = FORCED
 		});
 	}
 
-	if(block_z == (CHUNK_SIZE - 1)) {
+	if(block_z == (GCHUNK_SIZE - 1)) {
 		wg_send(facesg, &(ChunkFaceWork){
 			.x = chunk_x,
 			.y = chunk_y, 
-			.z = chunk_z + CHUNK_SIZE,
+			.z = chunk_z + GCHUNK_SIZE,
 			.mode = FORCED
 		});
 	}

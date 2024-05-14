@@ -7,13 +7,13 @@
 #include <noise1234.h>
 #include <assert.h>
 
-#define X_SCALE (0.0625 / CHUNK_SIZE)
-#define Y_SCALE (0.0625 / CHUNK_SIZE)
-#define Z_SCALE (0.0625 / CHUNK_SIZE)
+#define X_SCALE (0.0625 / 16)
+#define Y_SCALE (0.0625 / 16)
+#define Z_SCALE (0.0625 / 16)
 
 #define HEIGHT_AMPL 1.25
-#define HEIGHT_SCALE (vec2){ 0.0625 / (4 * CHUNK_SIZE), 0.0625 / (4 * CHUNK_SIZE) }
-#define NOISE3_SCALE (vec3){ 0.125 / CHUNK_SIZE, 0.2 / CHUNK_SIZE, 0.125 / CHUNK_SIZE }
+#define HEIGHT_SCALE (vec2){ 0.0625 / (4 * 16), 0.0625 / (4 * 16) }
+#define NOISE3_SCALE (vec3){ 0.125 / 16, 0.2 / 16, 0.125 / 16 }
 
 #define GROUND_HEIGHT 64
 
