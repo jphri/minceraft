@@ -18,9 +18,7 @@ typedef struct {
 	ChunkState state;
 } Work;
 
-#define MAX_CHUNKS 8192
-#define MAX_WORK 1024
-#define NUM_WORKERS 4
+#define MAX_CHUNKS 32768
 
 static volatile Chunk *find_chunk(int x, int y, int z, ChunkState state);
 static volatile Chunk *chunk_gen(int x, int y, int z, ChunkState state);
