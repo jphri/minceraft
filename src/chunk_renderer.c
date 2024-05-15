@@ -214,51 +214,53 @@ chunk_render_update()
 void
 chunk_render_render_solid_chunk(GraphicsChunk *c)
 {
-	lock_gl_context();
-	glUseProgram(chunk_program);
-	glUniform3fv(chunk_position_uni, 1, (vec3){ c->x, c->y, c->z });
-	glUniform1f(alpha_uni, 1.0);
-
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, terrain.texture);
-
-	glEnable(GL_DEPTH_TEST);
-	glDisable(GL_BLEND);
-
 	if(c->vert_count > 0) {
-		glBindVertexArray(c->chunk_vao);
-		glDrawArrays(GL_TRIANGLES, 0, c->vert_count);
-	}
+		lock_gl_context();
+		glUseProgram(chunk_program);
+		glUniform3fv(chunk_position_uni, 1, (vec3){ c->x, c->y, c->z });
+		glUniform1f(alpha_uni, 1.0);
 
-	glBindTexture(GL_TEXTURE_2D, 0);
-	glUseProgram(0);
-	unlock_gl_context();
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, terrain.texture);
+
+		glEnable(GL_DEPTH_TEST);
+		glDisable(GL_BLEND);
+
+			glBindVertexArray(c->chunk_vao);
+			glDrawArrays(GL_TRIANGLES, 0, c->vert_count);
+		
+
+		glBindTexture(GL_TEXTURE_2D, 0);
+		glUseProgram(0);
+		unlock_gl_context();
+	}
 }
 
 void
 chunk_render_render_water_chunk(GraphicsChunk *c)
 {
-	lock_gl_context();
-	glUseProgram(chunk_program);
-	glUniform3fv(chunk_position_uni, 1, (vec3){ c->x, c->y, c->z });
-	glUniform1f(alpha_uni, 1.0);
-
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, terrain.texture);
-
-	glUniform1f(alpha_uni, 0.9);
-
-	glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
 	if(c->water_vert_count > 0) {
-		glBindVertexArray(c->water_vao);
-		glDrawArrays(GL_TRIANGLES, 0, c->water_vert_count);
-	}
+		lock_gl_context();
+		glUseProgram(chunk_program);
+		glUniform3fv(chunk_position_uni, 1, (vec3){ c->x, c->y, c->z });
+		glUniform1f(alpha_uni, 1.0);
 
-	glBindTexture(GL_TEXTURE_2D, 0);
-	glUseProgram(0);
-	unlock_gl_context();
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, terrain.texture);
+
+		glUniform1f(alpha_uni, 0.9);
+
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+			glBindVertexArray(c->water_vao);
+			glDrawArrays(GL_TRIANGLES, 0, c->water_vert_count);
+		
+
+		glBindTexture(GL_TEXTURE_2D, 0);
+		glUseProgram(0);
+		unlock_gl_context();
+	}
 }
 
 void
@@ -616,6 +618,10 @@ faces_worker_func(WorkGroup *wg)
 		switch(w.mode) {
 		case NEW_LOAD:
 			w.chunk = allocate_chunk_except(w.x, w.y, w.z);
+			if(w.chunk) {
+				w.chunk->water_vert_count = 0;
+				w.chunk->vert_count = 0;
+			}
 			break;
 		case FORCED:
 			w.chunk = find_or_allocate_chunk(w.x, w.y, w.z);
@@ -624,7 +630,6 @@ faces_worker_func(WorkGroup *wg)
 		
 		if(!w.chunk)
 			continue;
-
 		arrbuf_init(&w.solid_faces);
 		arrbuf_init(&w.water_faces);
 		chunk_render_generate_faces(w.chunk, &w);
@@ -632,6 +637,8 @@ faces_worker_func(WorkGroup *wg)
 		lock_gl_context();
 		chunk_render_generate_buffers(&w);
 		unlock_gl_context();
+
+		printf("Size: %f MBs...\n", (double)w.solid_faces.size / (1024 * 1024));
 
 		arrbuf_free(&w.solid_faces);
 		arrbuf_free(&w.water_faces);
