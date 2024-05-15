@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <stb_image.h>
 
+#include "global.h"
 #include "linmath.h"
 #include "util.h"
 #include "glutil.h"
@@ -202,15 +203,18 @@ chunk_render_set_camera(vec3 position, vec3 look_at, float aspect, float rdist)
 void
 chunk_render_update()
 {
+	lock_gl_context();
 	glUseProgram(chunk_program);
 	glUniformMatrix4fv(projection_uni, 1, GL_FALSE, &projection[0][0]);
 	glUniformMatrix4fv(view_uni, 1, GL_FALSE, &view[0][0]);
 	glUseProgram(0);
+	unlock_gl_context();
 }
 
 void
 chunk_render_render_solid_chunk(GraphicsChunk *c)
 {
+	lock_gl_context();
 	glUseProgram(chunk_program);
 	glUniform3fv(chunk_position_uni, 1, (vec3){ c->x, c->y, c->z });
 	glUniform1f(alpha_uni, 1.0);
@@ -228,11 +232,13 @@ chunk_render_render_solid_chunk(GraphicsChunk *c)
 
 	glBindTexture(GL_TEXTURE_2D, 0);
 	glUseProgram(0);
+	unlock_gl_context();
 }
 
 void
 chunk_render_render_water_chunk(GraphicsChunk *c)
 {
+	lock_gl_context();
 	glUseProgram(chunk_program);
 	glUniform3fv(chunk_position_uni, 1, (vec3){ c->x, c->y, c->z });
 	glUniform1f(alpha_uni, 1.0);
@@ -252,6 +258,7 @@ chunk_render_render_water_chunk(GraphicsChunk *c)
 
 	glBindTexture(GL_TEXTURE_2D, 0);
 	glUseProgram(0);
+	unlock_gl_context();
 }
 
 void
@@ -290,6 +297,8 @@ chunk_render_generate_buffers(ChunkFaceWork *w)
 	glBindBuffer(GL_ARRAY_BUFFER, chunk->water_vbo);
 	glBufferData(GL_ARRAY_BUFFER, w->water_faces.size, w->water_faces.data, GL_STATIC_DRAW);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+	printf("Chunk generated for: %d %d %d\n", w->chunk->x, w->chunk->y, w->chunk->z);
 }
 
 bool
@@ -619,7 +628,13 @@ faces_worker_func(WorkGroup *wg)
 		arrbuf_init(&w.solid_faces);
 		arrbuf_init(&w.water_faces);
 		chunk_render_generate_faces(w.chunk, &w);
-		wg_send(glbuffersg, &w);
+		
+		lock_gl_context();
+		chunk_render_generate_buffers(&w);
+		unlock_gl_context();
+
+		arrbuf_free(&w.solid_faces);
+		arrbuf_free(&w.water_faces);
 	}
 }
 

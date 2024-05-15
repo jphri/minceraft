@@ -1,3 +1,4 @@
+#include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -7,6 +8,7 @@
 #include <assert.h>
 
 #include "chunk_renderer.h"
+#include "global.h"
 #include "util.h"
 #include "glutil.h"
 #include "linmath.h"
@@ -52,8 +54,11 @@ static void mouse_click_callback(GLFWwindow *window, int button, int action, int
 static void keyboard_callback(GLFWwindow *window, int scan, int key, int action, int mods);
 
 static GLFWwindow *window;
+static pthread_mutex_t context_mtx;
 
 static Player player;
+static int frames;
+static float fps_time;
 
 int
 main()
@@ -75,6 +80,8 @@ main()
 	glfwMakeContextCurrent(window);
 	if(glewInit() != GLEW_OK)
 		return -3;
+
+	pthread_mutex_init(&context_mtx, NULL);
 
 	world_init();
 	chunk_render_init();
@@ -101,9 +108,12 @@ main()
 		player_update(&player, delta);
 
 		glfwGetWindowSize(window, &w, &h);
+		lock_gl_context();
 		glViewport(0, 0, w, h);
 		glClearColor(0.5, 0.7, 0.9, 1.0);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		unlock_gl_context();
+
 		chunk_render_set_camera(player.eye_position, player.camera_view, (float)w/h, 128);
 		chunk_render();
 
@@ -111,6 +121,14 @@ main()
 		glfwPollEvents();
 
 		while(glGetError() != GL_NO_ERROR);
+
+		frames++;
+		fps_time += delta;
+		if(fps_time > 1.0) {
+			printf("FPS: %d\n", frames);
+			frames = 0;
+			fps_time = 0;
+		}
 	}
 
 	chunk_render_terminate();
@@ -297,4 +315,18 @@ keyboard_callback(GLFWwindow *window, int key, int scan, int action, int mods)
 	if(key == GLFW_KEY_ESCAPE) {
 		locking = false;
 	}
+}
+
+void
+lock_gl_context()
+{
+	pthread_mutex_lock(&context_mtx);
+	glfwMakeContextCurrent(window);
+}
+
+void
+unlock_gl_context()
+{
+	glfwMakeContextCurrent(NULL);
+	pthread_mutex_unlock(&context_mtx);
 }
