@@ -33,11 +33,7 @@ struct GraphicsChunk {
 };
 
 typedef struct {
-	GraphicsChunk *chunk;
-	ArrayBuffer solid_faces;
-	ArrayBuffer water_faces;
 	int x, y, z;
-
 	enum {
 		NEW_LOAD,
 		FORCED,
@@ -46,7 +42,7 @@ typedef struct {
 
 #define BLOCK_SCALE 1.0
 #define WATER_OFFSET 0.1
-#define MAX_CHUNKS 8192
+#define MAX_CHUNKS 16384
 #define MAX_WORK 1024
 
 #define GCHUNK_SIZE_W 64
@@ -274,7 +270,7 @@ chunk_render_render_water_chunk(GraphicsChunk *c)
 }
 
 void
-chunk_render_generate_faces(GraphicsChunk *chunk, ChunkFaceWork *w)
+chunk_render_generate_faces(GraphicsChunk *chunk, ArrayBuffer *solid_faces, ArrayBuffer *water_faces)
 {
 	for(int z = 0; z < GCHUNK_SIZE_D; z++)
 		for(int y = 0; y < GCHUNK_SIZE_H; y++)
@@ -284,33 +280,32 @@ chunk_render_generate_faces(GraphicsChunk *chunk, ChunkFaceWork *w)
 					continue;
 				switch(block) {
 				case BLOCK_WATER:
-					chunk_generate_face_water(chunk, x, y, z, &w->water_faces);
+					chunk_generate_face_water(chunk, x, y, z, water_faces);
 					break;
 				case BLOCK_ROSE:
 				case BLOCK_GRASS_BLADES:
-					chunk_generate_face_grass(chunk, x, y, z, &w->solid_faces);
+					chunk_generate_face_grass(chunk, x, y, z, solid_faces);
 					break;
 				default:
-					chunk_generate_face(chunk, x, y, z, &w->solid_faces);
+					chunk_generate_face(chunk, x, y, z, solid_faces);
 				}
 			}
 }
 
 void
-chunk_render_generate_buffers(ChunkFaceWork *w)
+chunk_render_generate_buffers(GraphicsChunk *chunk, ArrayBuffer *solid_faces, ArrayBuffer *water_faces)
 {
-	GraphicsChunk *chunk = w->chunk;
 
-	chunk->vert_count = arrbuf_length(&w->solid_faces, sizeof(Vertex));
-	chunk->water_vert_count = arrbuf_length(&w->water_faces, sizeof(Vertex));
+	chunk->vert_count = arrbuf_length(solid_faces, sizeof(Vertex));
+	chunk->water_vert_count = arrbuf_length(water_faces, sizeof(Vertex));
 
 	glBindBuffer(GL_ARRAY_BUFFER, chunk->chunk_vbo);
-	glBufferData(GL_ARRAY_BUFFER, w->solid_faces.size, w->solid_faces.data, GL_STATIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, solid_faces->size, solid_faces->data, GL_STATIC_DRAW);
 	glBindBuffer(GL_ARRAY_BUFFER, chunk->water_vbo);
-	glBufferData(GL_ARRAY_BUFFER, w->water_faces.size, w->water_faces.data, GL_STATIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, water_faces->size, water_faces->data, GL_STATIC_DRAW);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-	printf("Chunk generated for: %d %d %d\n", w->chunk->x, w->chunk->y, w->chunk->z);
+	printf("Chunk generated for: %d %d %d\n", chunk->x, chunk->y, chunk->z);
 }
 
 bool
@@ -593,13 +588,6 @@ load_textures()
 void
 chunk_render()
 {
-	ChunkFaceWork w;
-	while(wg_recv_nonblock(glbuffersg, &w)) {
-		chunk_render_generate_buffers(&w);
-		arrbuf_free(&w.solid_faces);
-		arrbuf_free(&w.water_faces);
-	}
-
 	chunk_render_update();
 	for(int zz = -render_distance; zz < render_distance; zz += GCHUNK_SIZE_D)
 	for(int yy = -render_distance; yy < render_distance; yy += GCHUNK_SIZE_H)
@@ -624,35 +612,41 @@ void
 faces_worker_func(WorkGroup *wg)
 {
 	ChunkFaceWork w;
+	ArrayBuffer solid_faces, water_faces;
+	GraphicsChunk *chunk;
+
+	arrbuf_init(&solid_faces);
+	arrbuf_init(&water_faces);
 	while(wg_recv(wg, &w)) {
 		switch(w.mode) {
 		case NEW_LOAD:
-			w.chunk = allocate_chunk_except(w.x, w.y, w.z);
-			if(w.chunk) {
-				w.chunk->water_vert_count = 0;
-				w.chunk->vert_count = 0;
+			chunk = allocate_chunk_except(w.x, w.y, w.z);
+			if(chunk) {
+				chunk->water_vert_count = 0;
+				chunk->vert_count = 0;
 			}
 			break;
 		case FORCED:
-			w.chunk = find_or_allocate_chunk(w.x, w.y, w.z);
+			chunk = find_or_allocate_chunk(w.x, w.y, w.z);
 			break;
+		default:
+			assert(0 && "invalid chunk load mode");
 		}
 		
-		if(!w.chunk)
+		if(!chunk)
 			continue;
-		arrbuf_init(&w.solid_faces);
-		arrbuf_init(&w.water_faces);
-		chunk_render_generate_faces(w.chunk, &w);
+
+		arrbuf_clear(&solid_faces);
+		arrbuf_clear(&water_faces);
+		chunk_render_generate_faces(chunk, &solid_faces, &water_faces);
 		
 		lock_gl_context();
-		chunk_render_generate_buffers(&w);
+		chunk_render_generate_buffers(chunk, &solid_faces, &water_faces);
 		unlock_gl_context();
 
-		printf("Size: %f MBs...\n", (double)w.solid_faces.size / (1024 * 1024));
-
-		arrbuf_free(&w.solid_faces);
-		arrbuf_free(&w.water_faces);
 	}
+	arrbuf_free(&solid_faces);
+	arrbuf_free(&water_faces);
 }
 
 GraphicsChunk *
