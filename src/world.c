@@ -95,7 +95,10 @@ world_get(int x, int y, int z, ChunkState state)
 	int chunk_z = z & CHUNK_MASK;
 
 	volatile Chunk *ch;
-	while((ch = chunk_gen(chunk_x, chunk_y, chunk_z, state)) == NULL);
+	if(!(ch = chunk_gen(chunk_x, chunk_y, chunk_z, state))) {
+		return BLOCK_UNLOADED;
+	}
+	
 
 	x &= BLOCK_MASK;
 	y &= BLOCK_MASK;
@@ -112,7 +115,9 @@ world_get_density(int x, int y, int z, ChunkState state)
 	int chunk_z = z & CHUNK_MASK;
 
 	volatile Chunk *ch;
-	while((ch = chunk_gen(chunk_x, chunk_y, chunk_z, state)) == NULL);
+	if(!(ch = chunk_gen(chunk_x, chunk_y, chunk_z, state))) {
+		return NAN;
+	}
 
 	x &= BLOCK_MASK;
 	y &= BLOCK_MASK;
@@ -129,7 +134,9 @@ world_set_density(int x, int y, int z, ChunkState state, float r)
 	int chunk_z = z & CHUNK_MASK;
 
 	volatile Chunk *ch;
-	while((ch = chunk_gen(chunk_x, chunk_y, chunk_z, state)) == NULL);
+	if(!(ch = chunk_gen(chunk_x, chunk_y, chunk_z, state))) {
+		return;
+	}
 
 	x &= BLOCK_MASK;
 	y &= BLOCK_MASK;
@@ -152,7 +159,9 @@ world_set(int x, int y, int z, ChunkState state, Block block)
 	int chunk_z = z & CHUNK_MASK;
 
 	volatile Chunk *ch;
-	while((ch = chunk_gen(chunk_x, chunk_y, chunk_z, state)) == NULL);
+	if(!(ch = chunk_gen(chunk_x, chunk_y, chunk_z, state))) {
+		return;
+	}
 
 	x &= BLOCK_MASK;
 	y &= BLOCK_MASK;
@@ -303,6 +312,9 @@ remove_chunk(Chunk *c)
 volatile Chunk *
 chunk_gen(int x, int y, int z, ChunkState target_state)
 {
+	if(!world_can_load(x, y, z))
+		return NULL;
+
 	volatile Chunk *c = find_chunk(x, y, z, 0);
 	if(!c) {
 		c = allocate_chunk(x, y, z);
@@ -398,4 +410,13 @@ allocate_chunk(int x, int y, int z)
 	insert_chunk(c);
 	pthread_mutex_unlock(&chunk_mutex);
 	return c;
+}
+
+bool
+world_can_load(int x, int y, int z)
+{
+	int dx = abs(cx - x);
+	int dy = abs(cy - y);
+	int dz = abs(cz - z);
+	return dx <= cradius && dy <= cradius && dz <= cradius;
 }

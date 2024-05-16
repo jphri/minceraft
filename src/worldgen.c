@@ -92,6 +92,9 @@ wgen_surface(int cx, int cy, int cz)
 			int i;
 			for(i = 1; i < 4; i++) {
 				float den = world_get_density(x, y + i, z, CSTATE_SHAPED);
+				if(den == NAN)
+					return;
+
 				if(den <= 0)
 					break;
 			}
@@ -120,7 +123,13 @@ wgen_decorate(int cx, int cy, int cz)
 			continue;
 		}
 
-		if(world_get_density(x, y, z, CSTATE_SHAPED) < 0 && world_get_density(x, y - 1, z, CSTATE_SHAPED) >= 0) {
+		if(world_get_density(x, y, z, CSTATE_SHAPED) < 0) {
+			float den = world_get_density(x, y - 1, z, CSTATE_SHAPED);
+			if(den == NAN)
+				return;
+
+			if(den < 0)
+				continue;
 			
 			if(y > GROUND_HEIGHT) {
 				int hash = hash_coord(grass_flower_hash, x, y, z);

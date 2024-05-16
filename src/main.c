@@ -131,6 +131,7 @@ main()
 		}
 	}
 
+	world_set_load_border(0, 0, 0, -2147483648);
 	chunk_render_terminate();
 	world_terminate();
 
