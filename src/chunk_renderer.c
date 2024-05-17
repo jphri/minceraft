@@ -230,24 +230,9 @@ void
 chunk_render_render_solid_chunk(GraphicsChunk *c)
 {
 	if(c->vert_count > 0) {
-		lock_gl_context();
-		glUseProgram(chunk_program);
 		glUniform3fv(chunk_position_uni, 1, (vec3){ c->x, c->y, c->z });
-		glUniform1f(alpha_uni, 1.0);
-
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, terrain.texture);
-
-		glEnable(GL_DEPTH_TEST);
-		glDisable(GL_BLEND);
-
-			glBindVertexArray(c->chunk_vao);
-			glDrawArrays(GL_TRIANGLES, 0, c->vert_count);
-		
-
-		glBindTexture(GL_TEXTURE_2D, 0);
-		glUseProgram(0);
-		unlock_gl_context();
+		glBindVertexArray(c->chunk_vao);
+		glDrawArrays(GL_TRIANGLES, 0, c->vert_count);
 	}
 }
 
@@ -255,26 +240,9 @@ void
 chunk_render_render_water_chunk(GraphicsChunk *c)
 {
 	if(c->water_vert_count > 0) {
-		lock_gl_context();
-		glUseProgram(chunk_program);
 		glUniform3fv(chunk_position_uni, 1, (vec3){ c->x, c->y, c->z });
-		glUniform1f(alpha_uni, 1.0);
-
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, terrain.texture);
-
-		glUniform1f(alpha_uni, 0.9);
-
-		glEnable(GL_BLEND);
-		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-			glBindVertexArray(c->water_vao);
-			glDrawArrays(GL_TRIANGLES, 0, c->water_vert_count);
-		
-
-		glBindTexture(GL_TEXTURE_2D, 0);
-		glUseProgram(0);
-		unlock_gl_context();
+		glBindVertexArray(c->water_vao);
+		glDrawArrays(GL_TRIANGLES, 0, c->water_vert_count);
 	}
 }
 
@@ -623,6 +591,17 @@ void
 chunk_render()
 {
 	chunk_render_update();
+	lock_gl_context();
+	glUseProgram(chunk_program);
+	glUniform1f(alpha_uni, 1.0);
+	
+	glEnable(GL_CULL_FACE);
+	glEnable(GL_DEPTH_TEST);
+	glDisable(GL_BLEND);
+
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, terrain.texture);
+
 	for(int zz = -render_distance; zz < render_distance; zz += GCHUNK_SIZE_D)
 	for(int yy = -render_distance; yy < render_distance; yy += GCHUNK_SIZE_H)
 	for(int xx = -render_distance; xx < render_distance; xx += GCHUNK_SIZE_W) {
@@ -631,6 +610,11 @@ chunk_render()
 			chunk_render_render_solid_chunk(c);
 		}
 	}
+
+	glUniform1f(alpha_uni, 0.9);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
 	
 	for(int zz = -render_distance; zz < render_distance; zz += GCHUNK_SIZE_D)
 	for(int yy = -render_distance; yy < render_distance; yy += GCHUNK_SIZE_H)
@@ -640,6 +624,10 @@ chunk_render()
 			chunk_render_render_water_chunk(c);
 		}
 	}
+
+	glBindTexture(GL_TEXTURE_2D, 0);
+	glUseProgram(0);
+	unlock_gl_context();
 }
 
 void
