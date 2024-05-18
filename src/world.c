@@ -18,7 +18,9 @@ typedef struct {
 	ChunkState state;
 } Work;
 
-#define MAX_CHUNKS 32768
+#define MAX_BLOCKS 1024
+#define CHUNK_MAX_BLOCKS (MAX_BLOCKS / CHUNK_SIZE)
+#define MAX_CHUNKS (CHUNK_MAX_BLOCKS * CHUNK_MAX_BLOCKS * CHUNK_MAX_BLOCKS)
 
 static volatile Chunk *find_chunk(int x, int y, int z, ChunkState state);
 static volatile Chunk *chunk_gen(int x, int y, int z, ChunkState state);
@@ -50,20 +52,18 @@ static int running;
 
 static Chunk *chunkmap[65536];
 static Chunk *chunks;
-static volatile int max_chunk_id;
 static int cx, cy, cz, cradius;
 static pthread_mutex_t chunk_mutex;
+
+static Chunk *chunks;
+static volatile int chunk_count;
 
 void
 world_init()
 {
 	running = true;
 
-	chunks = malloc(sizeof(Chunk) * MAX_CHUNKS);
-	for(int i = 0; i < MAX_CHUNKS; i++) {
-		chunks[i].free = true;
-		chunks[i].state = CSTATE_FREE;
-	}
+	chunks = NULL;
 	memset(chunkmap, 0, sizeof(chunkmap));
 	pthread_mutex_init(&chunk_mutex, NULL);
 }
@@ -382,9 +382,8 @@ allocate_chunk(int x, int y, int z)
 {
 	Chunk *c;
 
-	assert(max_chunk_id < MAX_CHUNKS);
 	pthread_mutex_lock(&chunk_mutex);
-	for(c = chunks; c <= chunks + max_chunk_id; c++) {
+	for(c = chunks; c; c = c->next_alloc) {
 		if(c->free) {
 			break;
 		}
@@ -397,9 +396,11 @@ allocate_chunk(int x, int y, int z)
 			break;
 		}
 	}
-	if(c - chunks > max_chunk_id) { 
-		max_chunk_id++;
-		c = chunks + max_chunk_id;
+	if(c == NULL) {
+		c = malloc(sizeof(*c));
+		c->next_alloc = chunks;
+		chunks = c;
+		chunk_count ++;
 	}
 
 	c->free = false;
@@ -419,4 +420,10 @@ world_can_load(int x, int y, int z)
 	int dy = abs(cy - y);
 	int dz = abs(cz - z);
 	return dx <= cradius && dy <= cradius && dz <= cradius;
+}
+
+int
+world_allocated_chunks_count()
+{
+	return chunk_count;
 }

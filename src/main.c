@@ -1,3 +1,4 @@
+#include <bits/time.h>
 #include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -17,6 +18,7 @@
 #include "collision.h"
 
 #include <stb_image.h>
+#include <time.h>
 
 #ifndef M_PI
 #define M_PI 3.1415926535
@@ -59,7 +61,9 @@ static pthread_mutex_t context_mtx;
 static Player player;
 static int frames;
 static float fps_time;
+static int old_chunk_count;
 
+#if 1
 int
 main()
 {
@@ -81,6 +85,8 @@ main()
 	if(glewInit() != GLEW_OK)
 		return -3;
 
+	glfwSwapInterval(1);
+
 	pthread_mutex_init(&context_mtx, NULL);
 
 	world_init();
@@ -96,6 +102,7 @@ main()
 
 	glfwShowWindow(window);
 	pre_time = glfwGetTime();
+	old_chunk_count = world_allocated_chunks_count();
 	while(!glfwWindowShouldClose(window)) {
 		int w, h;
 		double curr_time = glfwGetTime();
@@ -114,7 +121,7 @@ main()
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		unlock_gl_context();
 
-		chunk_render_set_camera(player.eye_position, player.camera_view, (float)w/h, 128);
+		chunk_render_set_camera(player.eye_position, player.camera_view, (float)w/h, 256);
 		chunk_render();
 
 		glfwSwapBuffers(window);
@@ -125,7 +132,11 @@ main()
 		frames++;
 		fps_time += delta;
 		if(fps_time > 1.0) {
-			printf("FPS: %d\n", frames);
+			int current = world_allocated_chunks_count();
+			int cdelta = current - old_chunk_count;
+			old_chunk_count = current;
+
+			printf("FPS: %d (%d chunks (%0.2f MB), %d new chunks...)\n", frames, current, (current * sizeof(Chunk) / (1024.0 * 1024.0)), cdelta);
 			frames = 0;
 			fps_time = 0;
 		}
@@ -140,6 +151,59 @@ main()
 	glfwTerminate();
 	return 0;
 }
+#else
+
+int
+main()
+{
+	struct timespec start, end;
+	world_init();
+	world_set_load_border(0, 0, 0, 1024);
+
+	clock_gettime(CLOCK_REALTIME, &start);
+	
+	#define W 32
+	#define H 32
+	#define D 32
+
+	#define CZ (CHUNK_SIZE)
+
+	#pragma omp parallel for num_threads(6)
+	for(int i = 0; i < W * H * D; i++) {
+		Block block;
+		int x, y, z;
+
+		x = (i % W);
+		y = (i / W) % H;
+		z = (i / W) / H;
+
+		for(int j = 0; j < CZ * CZ * CZ; j++) {
+			int xx = x * CHUNK_SIZE + j % (CZ);
+			int yy = y * CHUNK_SIZE + (j / CZ) % CZ;
+			int zz = z * CHUNK_SIZE + (j / CZ) / CZ;
+
+			while((block = world_get_block(xx, yy, zz)) == BLOCK_UNLOADED) printf("Locked... %d\n",     omp_get_thread_num());
+			while((block = world_get_block(xx - 1, yy, zz)) == BLOCK_UNLOADED) printf("Locked... %d\n", omp_get_thread_num());;
+			while((block = world_get_block(xx + 1, yy, zz)) == BLOCK_UNLOADED) printf("Locked... %d\n", omp_get_thread_num());;
+			while((block = world_get_block(xx, yy - 1, zz)) == BLOCK_UNLOADED) printf("Locked... %d\n", omp_get_thread_num());;
+			while((block = world_get_block(xx, yy + 1, zz)) == BLOCK_UNLOADED) printf("Locked... %d\n", omp_get_thread_num());;
+			while((block = world_get_block(xx, yy, zz - 1)) == BLOCK_UNLOADED) printf("Locked... %d\n", omp_get_thread_num());;
+			while((block = world_get_block(xx, yy, zz + 1)) == BLOCK_UNLOADED) printf("Locked... %d\n", omp_get_thread_num());;
+		}
+	}
+
+	clock_gettime(CLOCK_REALTIME, &end);
+	
+	double start_time = start.tv_sec + start.tv_nsec / 1000000000.0;
+	double end_time   = end.tv_sec + end.tv_nsec / 1000000000.0;
+
+	printf("Process time: %0.2f ms\n", (end_time - start_time) * 1000); 
+
+	world_terminate();
+	return 0;
+}
+
+#endif
 
 void
 error_callback(int errcode, const char *msg)

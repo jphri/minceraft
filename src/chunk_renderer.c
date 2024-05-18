@@ -312,8 +312,6 @@ chunk_render_generate_buffers(GraphicsChunk *chunk, ArrayBuffer *solid_faces, Ar
 	glBufferSubData(GL_ARRAY_BUFFER, 0, solid_faces->size, solid_faces->data);
 	glBufferSubData(GL_ARRAY_BUFFER, solid_faces->size, water_faces->size, water_faces->data);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-	printf("Chunk generated for: %d %d %d\n", chunk->x, chunk->y, chunk->z);
 }
 
 bool
@@ -666,7 +664,6 @@ faces_worker_func(WorkGroup *wg)
 		arrbuf_clear(&water_faces);
 		if(!chunk_render_generate_faces(chunk, &solid_faces, &water_faces)) {
 			if(world_can_load(chunk->x, chunk->y, chunk->z)) {
-				printf("Trying later...\n");
 				w.mode = TRY_LATER;
 				wg_send(facesg, &w);
 			}
@@ -679,8 +676,6 @@ faces_worker_func(WorkGroup *wg)
 		unlock_gl_context();
 
 		chunk->state = GSTATE_DONE;
-		if(trying_later)
-			printf("Generated after trying later...\n");
 	}
 	arrbuf_free(&solid_faces);
 	arrbuf_free(&water_faces);
