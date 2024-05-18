@@ -25,7 +25,6 @@ struct GraphicsChunk {
 	int x, y, z;
 	unsigned int chunk_vbo, chunk_vao;
 	unsigned int vert_count;
-	unsigned int water_vbo, water_vao;
 	unsigned int water_vert_count;
 	bool free;
 
@@ -241,8 +240,8 @@ chunk_render_render_water_chunk(GraphicsChunk *c)
 {
 	if(c->water_vert_count > 0) {
 		glUniform3fv(chunk_position_uni, 1, (vec3){ c->x, c->y, c->z });
-		glBindVertexArray(c->water_vao);
-		glDrawArrays(GL_TRIANGLES, 0, c->water_vert_count);
+		glBindVertexArray(c->chunk_vao);
+		glDrawArrays(GL_TRIANGLES, c->vert_count, c->water_vert_count);
 	}
 }
 
@@ -306,10 +305,12 @@ chunk_render_generate_buffers(GraphicsChunk *chunk, ArrayBuffer *solid_faces, Ar
 	chunk->vert_count = arrbuf_length(solid_faces, sizeof(Vertex));
 	chunk->water_vert_count = arrbuf_length(water_faces, sizeof(Vertex));
 
+	size_t size = solid_faces->size + water_faces->size;
+
 	glBindBuffer(GL_ARRAY_BUFFER, chunk->chunk_vbo);
-	glBufferData(GL_ARRAY_BUFFER, solid_faces->size, solid_faces->data, GL_STATIC_DRAW);
-	glBindBuffer(GL_ARRAY_BUFFER, chunk->water_vbo);
-	glBufferData(GL_ARRAY_BUFFER, water_faces->size, water_faces->data, GL_STATIC_DRAW);
+	glBufferData(GL_ARRAY_BUFFER, size, NULL, GL_STATIC_DRAW);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, solid_faces->size, solid_faces->data);
+	glBufferSubData(GL_ARRAY_BUFFER, solid_faces->size, water_faces->size, water_faces->data);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 
 	printf("Chunk generated for: %d %d %d\n", chunk->x, chunk->y, chunk->z);
@@ -557,12 +558,6 @@ load_buffers()
 		chunk->chunk_vao = ugl_create_vao(2, (VaoSpec[]){
 			{ 0, 3, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, position), 0, chunk->chunk_vbo },
 			{ 1, 2, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, texcoord), 0, chunk->chunk_vbo },
-		});
-
-		glGenBuffers(1, &chunk->water_vbo);
-		chunk->water_vao = ugl_create_vao(2, (VaoSpec[]){
-			{ 0, 3, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, position), 0, chunk->water_vbo },
-			{ 1, 2, GL_FLOAT, sizeof(Vertex), offsetof(Vertex, texcoord), 0, chunk->water_vbo },
 		});
 	}
 	UGL_ASSERT();
