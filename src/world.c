@@ -449,22 +449,3 @@ world_allocated_chunks_count()
 	return chunk_count;
 }
 
-void
-world_print_status()
-{
-	int max = -1;
-	int hash_with_max = -1;
-	int sum = 0;
-
-	for(int i = 0; i < 0x10000; i++) {
-		if(max < list_size[i]) {
-			max = list_size[i];
-			hash_with_max = i;
-		}
-		sum += list_size[i];
-	}
-
-	printf("%f | %d (%d)\n",
-		(double)sum / 0x10000, 
-		max, hash_with_max);
-}

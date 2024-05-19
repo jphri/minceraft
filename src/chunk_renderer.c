@@ -85,9 +85,9 @@ static void remove_chunk(GraphicsChunk *chunk);
 
 static bool load_texture(Texture *texture, const char *path);
 static void get_cube_face(Texture *texture, int tex_id, vec2 min, vec2 max);
-static void chunk_generate_face(GraphicsChunk *chunk, int x, int y, int z, Block block, Block face_blocks[6], ArrayBuffer *out);
-static void chunk_generate_face_water(GraphicsChunk *chunk, int x, int y, int z, Block block, Block face_blocks[6], ArrayBuffer *out);
-static void chunk_generate_face_grass(GraphicsChunk *chunk, int x, int y, int z, Block block, ArrayBuffer *buffer);
+static void chunk_generate_face(int x, int y, int z, Block block, Block face_blocks[6], ArrayBuffer *out);
+static void chunk_generate_face_water(int x, int y, int z, Block block, Block face_blocks[6], ArrayBuffer *out);
+static void chunk_generate_face_grass(int x, int y, int z, Block block, ArrayBuffer *buffer);
 static void faces_worker_func(WorkGroup *wg);
 
 static void load_programs();
@@ -264,14 +264,14 @@ chunk_render_generate_faces(GraphicsChunk *chunk, ArrayBuffer *solid_faces, Arra
 						case 0:
 							continue;
 						case BLOCK_WATER:
-							chunk_generate_face_water(chunk, chunk->xx, chunk->yy, chunk->zz, block, face_blocks, water_faces);
+							chunk_generate_face_water(chunk->xx, chunk->yy, chunk->zz, block, face_blocks, water_faces);
 							break;
 						case BLOCK_ROSE:
 						case BLOCK_GRASS_BLADES:
-							chunk_generate_face_grass(chunk, chunk->xx, chunk->yy, chunk->zz, block, solid_faces);
+							chunk_generate_face_grass(chunk->xx, chunk->yy, chunk->zz, block, solid_faces);
 							break;
 						default:
-							chunk_generate_face(chunk, chunk->xx, chunk->yy, chunk->zz, block, face_blocks, solid_faces);
+							chunk_generate_face(chunk->xx, chunk->yy, chunk->zz, block, face_blocks, solid_faces);
 					}
 				}
 		chunk->state = GSTATE_MESHED;
@@ -327,7 +327,7 @@ load_texture(Texture *texture, const char *path)
 }
 
 void
-chunk_generate_face_grass(GraphicsChunk *chunk, int x, int y, int z, Block block, ArrayBuffer *buffer)
+chunk_generate_face_grass(int x, int y, int z, Block block, ArrayBuffer *buffer)
 {
 	vec2 min, max;
 	#define INSERT_VERTEX(...) \
@@ -355,7 +355,7 @@ chunk_generate_face_grass(GraphicsChunk *chunk, int x, int y, int z, Block block
 }
 
 void
-chunk_generate_face(GraphicsChunk *chunk, int x, int y, int z, Block block, Block face_blocks[6], ArrayBuffer *buffer)
+chunk_generate_face(int x, int y, int z, Block block, Block face_blocks[6], ArrayBuffer *buffer)
 {
 	vec2 min, max;
 	#define INSERT_VERTEX(...) \
@@ -432,7 +432,7 @@ chunk_generate_face(GraphicsChunk *chunk, int x, int y, int z, Block block, Bloc
 }
 
 void
-chunk_generate_face_water(GraphicsChunk *chunk, int x, int y, int z, Block block, Block face_blocks[6], ArrayBuffer *buffer)
+chunk_generate_face_water(int x, int y, int z, Block block, Block face_blocks[6], ArrayBuffer *buffer)
 {
 	vec2 min, max;
 	#define INSERT_VERTEX(...) \
@@ -629,9 +629,6 @@ faces_worker_func(WorkGroup *wg)
 	arrbuf_init(&solid_faces);
 	arrbuf_init(&water_faces);
 	while(wg_recv(wg, &w)) {
-		//if(w.mode == TRY_LATER)
-		//	printf("Fuck...\n");
-
 		if(!w.chunk)
 			continue;
 
@@ -644,7 +641,6 @@ faces_worker_func(WorkGroup *wg)
 				w.mode = TRY_LATER;
 				w.chunk = chunk;
 				wg_send(facesg, &w);
-		//		printf("Well...\n");
 			}
 			continue;
 		}

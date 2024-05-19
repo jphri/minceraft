@@ -63,7 +63,6 @@ static int frames;
 static float fps_time;
 static int old_chunk_count;
 
-#if 1
 int
 main()
 {
@@ -139,7 +138,6 @@ main()
 			printf("FPS: %d (%d chunks (%0.2f MB), %d new chunks...)\n", frames, current, (current * sizeof(Chunk) / (1024.0 * 1024.0)), cdelta);
 			frames = 0;
 			fps_time = 0;
-			world_print_status();
 		}
 	}
 
@@ -152,60 +150,6 @@ main()
 	glfwTerminate();
 	return 0;
 }
-#else
-
-int
-main()
-{
-	struct timespec start, end;
-	world_init();
-	world_set_load_border(0, 0, 0, 1024);
-
-	clock_gettime(CLOCK_REALTIME, &start);
-	
-	#define W 16
-	#define H 16
-	#define D 16
-
-	#define CZ (CHUNK_SIZE)
-
-	printf("Testing with: %d %d %d\n", W, H, D);
-	#pragma omp parallel for num_threads(6)
-	for(int i = 0; i < W * H * D; i++) {
-		Block block;
-		int x, y, z;
-
-		x = (i % W);
-		y = (i / W) % H;
-		z = (i / W) / H;
-
-		for(int j = 0; j < CZ * CZ * CZ; j++) {
-			int xx = x * CHUNK_SIZE + j % (CZ);
-			int yy = y * CHUNK_SIZE + (j / CZ) % CZ;
-			int zz = z * CHUNK_SIZE + (j / CZ) / CZ;
-
-			while((block = world_get_block(xx, yy, zz)) == BLOCK_UNLOADED) ;
-			while((block = world_get_block(xx - 1, yy, zz)) == BLOCK_UNLOADED) ;
-			while((block = world_get_block(xx + 1, yy, zz)) == BLOCK_UNLOADED) ;
-			while((block = world_get_block(xx, yy - 1, zz)) == BLOCK_UNLOADED) ;
-			while((block = world_get_block(xx, yy + 1, zz)) == BLOCK_UNLOADED) ;
-			while((block = world_get_block(xx, yy, zz - 1)) == BLOCK_UNLOADED) ;
-			while((block = world_get_block(xx, yy, zz + 1)) == BLOCK_UNLOADED) ;
-		}
-	}
-
-	clock_gettime(CLOCK_REALTIME, &end);
-	
-	double start_time = start.tv_sec + start.tv_nsec / 1000000000.0;
-	double end_time   = end.tv_sec + end.tv_nsec / 1000000000.0;
-
-	printf("Process time: %0.2f ms\n", (end_time - start_time) * 1000); 
-
-	world_terminate();
-	return 0;
-}
-
-#endif
 
 void
 error_callback(int errcode, const char *msg)
