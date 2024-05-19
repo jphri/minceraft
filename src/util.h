@@ -211,12 +211,14 @@ static inline int clampi(int x, int minv, int maxv) {
 }
 
 static inline uint32_t hash_int(uint32_t i) {
-	return (i | 64) ^ ((i << 15) | (i >> 17));
+    i *= 3551332717;
+	i ^= ((i >> 15) | (i << 17));
+	return i;
 }
 
 static inline uint32_t hash_int3(uint32_t x, uint32_t y, uint32_t z) {
-	uint32_t h       = 0x0BABAB0E;
-	const uint32_t m = 0xDEADBEEF;
+	uint32_t h       = 4075758091;
+	const uint32_t m = 3757705307;
 
 	h = (hash_int(x) ^ h) * m;
 	h = (hash_int(y) ^ h) * m;
