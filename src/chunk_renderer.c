@@ -53,9 +53,9 @@ typedef struct {
 #define MAX_CHUNKS 16384
 #define MAX_WORK 16384
 
-#define GCHUNK_SIZE_W 64
-#define GCHUNK_SIZE_D 64
-#define GCHUNK_SIZE_H 128
+#define GCHUNK_SIZE_W 32
+#define GCHUNK_SIZE_D 32
+#define GCHUNK_SIZE_H 32
 
 #define GBLOCK_MASK_X (GCHUNK_SIZE_W - 1)
 #define GBLOCK_MASK_Y (GCHUNK_SIZE_H - 1)
@@ -93,6 +93,7 @@ static void faces_worker_func(WorkGroup *wg);
 static void load_programs();
 static void load_buffers();
 static void load_textures();
+static void manhattan_load(int x, int y, int z, int r);
 
 static int faces[BLOCK_LAST][6] = {
 	[BLOCK_GRASS] = {
@@ -583,28 +584,14 @@ chunk_render()
 	int rdist_y = render_distance & GCHUNK_MASK_Y;
 	int rdist_z = render_distance & GCHUNK_MASK_Z;
 
-	for(int zz = -rdist_z; zz < rdist_z; zz += GCHUNK_SIZE_D)
-	for(int yy = -rdist_y; yy < rdist_y; yy += GCHUNK_SIZE_H)
-	for(int xx = -rdist_x; xx < rdist_x; xx += GCHUNK_SIZE_W) {
-		GraphicsChunk *c = find_or_allocate_chunk(xx + chunk_x, yy + chunk_y, zz + chunk_z);
-		if(c->dirty) {
-			c->dirty = false;
-			wg_send(facesg, &(ChunkFaceWork) {
-				.chunk = c,
-				.mode = FORCED
-			});
-		}
-
-		if(c && c->state == GSTATE_DONE) {
-			chunk_render_render_solid_chunk(c);
-		}
+	for(int i = 0; i <= render_distance; i += GCHUNK_SIZE_W) {
+		manhattan_load(chunk_x, chunk_y, chunk_z, i);
 	}
 
 	glUniform1f(alpha_uni, 0.9);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-	
 	for(int zz = -rdist_z; zz < rdist_z; zz += GCHUNK_SIZE_D)
 	for(int yy = -rdist_y; yy < rdist_y; yy += GCHUNK_SIZE_H)
 	for(int xx = -rdist_x; xx < rdist_x; xx += GCHUNK_SIZE_W) {
@@ -742,3 +729,29 @@ chunk_render_request_update_block(int x, int y, int z)
 	GraphicsChunk *c = find_or_allocate_chunk(x, y, z);
 	c->dirty = true;
 }
+
+void
+manhattan_load(int x, int y, int z, int r)
+{
+	for(int xx = -r; xx <= r; xx += GCHUNK_SIZE_W)
+	for(int yy = -r; yy <= r; yy += GCHUNK_SIZE_H)
+	for(int zz = -r; zz <= r; zz += GCHUNK_SIZE_D) {
+		if(abs(xx) + abs(yy) + abs(zz) != r)
+			continue;
+
+		GraphicsChunk *c = find_or_allocate_chunk(xx + x, yy + y, zz + z);
+		if(c->dirty) {
+			c->dirty = false;
+			c->state = GSTATE_INIT;
+			wg_send(facesg, &(ChunkFaceWork) {
+				.chunk = c,
+				.mode = FORCED
+			});
+		}
+
+		if(c && c->state == GSTATE_DONE) {
+			chunk_render_render_solid_chunk(c);
+		}
+	}
+}
+
