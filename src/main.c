@@ -139,6 +139,7 @@ main()
 			printf("FPS: %d (%d chunks (%0.2f MB), %d new chunks...)\n", frames, current, (current * sizeof(Chunk) / (1024.0 * 1024.0)), cdelta);
 			frames = 0;
 			fps_time = 0;
+			world_print_status();
 		}
 	}
 
@@ -162,12 +163,13 @@ main()
 
 	clock_gettime(CLOCK_REALTIME, &start);
 	
-	#define W 32
-	#define H 32
-	#define D 32
+	#define W 16
+	#define H 16
+	#define D 16
 
 	#define CZ (CHUNK_SIZE)
 
+	printf("Testing with: %d %d %d\n", W, H, D);
 	#pragma omp parallel for num_threads(6)
 	for(int i = 0; i < W * H * D; i++) {
 		Block block;
@@ -182,13 +184,13 @@ main()
 			int yy = y * CHUNK_SIZE + (j / CZ) % CZ;
 			int zz = z * CHUNK_SIZE + (j / CZ) / CZ;
 
-			while((block = world_get_block(xx, yy, zz)) == BLOCK_UNLOADED) printf("Locked... %d\n",     omp_get_thread_num());
-			while((block = world_get_block(xx - 1, yy, zz)) == BLOCK_UNLOADED) printf("Locked... %d\n", omp_get_thread_num());;
-			while((block = world_get_block(xx + 1, yy, zz)) == BLOCK_UNLOADED) printf("Locked... %d\n", omp_get_thread_num());;
-			while((block = world_get_block(xx, yy - 1, zz)) == BLOCK_UNLOADED) printf("Locked... %d\n", omp_get_thread_num());;
-			while((block = world_get_block(xx, yy + 1, zz)) == BLOCK_UNLOADED) printf("Locked... %d\n", omp_get_thread_num());;
-			while((block = world_get_block(xx, yy, zz - 1)) == BLOCK_UNLOADED) printf("Locked... %d\n", omp_get_thread_num());;
-			while((block = world_get_block(xx, yy, zz + 1)) == BLOCK_UNLOADED) printf("Locked... %d\n", omp_get_thread_num());;
+			while((block = world_get_block(xx, yy, zz)) == BLOCK_UNLOADED) ;
+			while((block = world_get_block(xx - 1, yy, zz)) == BLOCK_UNLOADED) ;
+			while((block = world_get_block(xx + 1, yy, zz)) == BLOCK_UNLOADED) ;
+			while((block = world_get_block(xx, yy - 1, zz)) == BLOCK_UNLOADED) ;
+			while((block = world_get_block(xx, yy + 1, zz)) == BLOCK_UNLOADED) ;
+			while((block = world_get_block(xx, yy, zz - 1)) == BLOCK_UNLOADED) ;
+			while((block = world_get_block(xx, yy, zz + 1)) == BLOCK_UNLOADED) ;
 		}
 	}
 
@@ -317,7 +319,7 @@ player_update(Player *player, float delta)
 		player->old_chunk_y = chunk_y;
 		player->old_chunk_z = chunk_z;
 
-		world_set_load_border(chunk_x, chunk_y, chunk_z, 256);
+		world_set_load_border(chunk_x, chunk_y, chunk_z, 384);
 	}
 }
 

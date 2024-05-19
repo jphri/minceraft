@@ -26,7 +26,7 @@ struct GraphicsChunk {
 	unsigned int chunk_vbo, chunk_vao;
 	unsigned int vert_count;
 	unsigned int water_vert_count;
-	bool free;
+	bool free, dirty;
 
 	GraphicsChunk *next, *prev;
 
@@ -40,18 +40,18 @@ struct GraphicsChunk {
 };
 
 typedef struct {
-	int x, y, z;
 	enum {
 		NEW_LOAD,
 		TRY_LATER,
 		FORCED,
 	} mode;
+	GraphicsChunk *chunk;
 } ChunkFaceWork;
 
 #define BLOCK_SCALE 1.0
 #define WATER_OFFSET 0.1
 #define MAX_CHUNKS 16384
-#define MAX_WORK 1024
+#define MAX_WORK 16384
 
 #define GCHUNK_SIZE_W 64
 #define GCHUNK_SIZE_D 64
@@ -79,8 +79,6 @@ static GraphicsChunk *chunkmap[65536];
 static int max_chunk_id;
 
 static GraphicsChunk *find_or_allocate_chunk(int x, int y, int z);
-static GraphicsChunk *allocate_chunk_except(int x, int y, int z);
-static GraphicsChunk *find_chunk(int x, int y, int z);
 
 static void insert_chunk(GraphicsChunk *chunk);
 static void remove_chunk(GraphicsChunk *chunk);
@@ -90,7 +88,6 @@ static void get_cube_face(Texture *texture, int tex_id, vec2 min, vec2 max);
 static void chunk_generate_face(GraphicsChunk *chunk, int x, int y, int z, Block block, Block face_blocks[6], ArrayBuffer *out);
 static void chunk_generate_face_water(GraphicsChunk *chunk, int x, int y, int z, Block block, Block face_blocks[6], ArrayBuffer *out);
 static void chunk_generate_face_grass(GraphicsChunk *chunk, int x, int y, int z, Block block, ArrayBuffer *buffer);
-
 static void faces_worker_func(WorkGroup *wg);
 
 static void load_programs();
@@ -163,7 +160,6 @@ chunk_render_init()
 
 	facesg = wg_init(faces_worker_func, sizeof(ChunkFaceWork), MAX_WORK, 6);
 	glbuffersg = wg_init(NULL, sizeof(ChunkFaceWork), MAX_WORK, 0);
-	
 }
 
 void
@@ -188,7 +184,7 @@ chunk_render_set_camera(vec3 position, vec3 look_at, float aspect, float rdist)
 	vec3_add(scene_center, position, look_at);
 	mat4x4_perspective(projection, M_PI_2, aspect, 0.001, 1000.0);
 	mat4x4_look_at(view, position, scene_center, (vec3){ 0.0, 1.0, 0.0 });
-
+	
 	int nchunk_x = (int)floorf(position[0]) & GCHUNK_MASK_X;
 	int nchunk_y = (int)floorf(position[1]) & GCHUNK_MASK_Y;
 	int nchunk_z = (int)floorf(position[2]) & GCHUNK_MASK_Z;
@@ -199,18 +195,6 @@ chunk_render_set_camera(vec3 position, vec3 look_at, float aspect, float rdist)
 		chunk_y = nchunk_y;
 		chunk_z = nchunk_z;
 		render_distance = nrend;
-
-		for(int x = -render_distance; x <= render_distance; x += GCHUNK_SIZE_W)
-		for(int y = -render_distance; y <= render_distance; y += GCHUNK_SIZE_H)
-		for(int z = -render_distance; z <= render_distance; z += GCHUNK_SIZE_D) {
-			
-			wg_send(facesg, &(ChunkFaceWork){
-				.x = (nchunk_x + x),
-				.y = (nchunk_y + y),
-				.z = (nchunk_z + z),
-				.mode = NEW_LOAD
-			});
-		}	
 	}
 }
 
@@ -595,11 +579,23 @@ chunk_render()
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, terrain.texture);
 
-	for(int zz = -render_distance; zz < render_distance; zz += GCHUNK_SIZE_D)
-	for(int yy = -render_distance; yy < render_distance; yy += GCHUNK_SIZE_H)
-	for(int xx = -render_distance; xx < render_distance; xx += GCHUNK_SIZE_W) {
-		GraphicsChunk *c = find_chunk(xx + chunk_x, yy + chunk_y, zz + chunk_z);
-		if(c) {
+	int rdist_x = render_distance & GCHUNK_MASK_X;
+	int rdist_y = render_distance & GCHUNK_MASK_Y;
+	int rdist_z = render_distance & GCHUNK_MASK_Z;
+
+	for(int zz = -rdist_z; zz < rdist_z; zz += GCHUNK_SIZE_D)
+	for(int yy = -rdist_y; yy < rdist_y; yy += GCHUNK_SIZE_H)
+	for(int xx = -rdist_x; xx < rdist_x; xx += GCHUNK_SIZE_W) {
+		GraphicsChunk *c = find_or_allocate_chunk(xx + chunk_x, yy + chunk_y, zz + chunk_z);
+		if(c->dirty) {
+			c->dirty = false;
+			wg_send(facesg, &(ChunkFaceWork) {
+				.chunk = c,
+				.mode = FORCED
+			});
+		}
+
+		if(c && c->state == GSTATE_DONE) {
 			chunk_render_render_solid_chunk(c);
 		}
 	}
@@ -609,11 +605,11 @@ chunk_render()
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 	
-	for(int zz = -render_distance; zz < render_distance; zz += GCHUNK_SIZE_D)
-	for(int yy = -render_distance; yy < render_distance; yy += GCHUNK_SIZE_H)
-	for(int xx = -render_distance; xx < render_distance; xx += GCHUNK_SIZE_W) {
-		GraphicsChunk *c = find_chunk(xx + chunk_x, yy + chunk_y, zz + chunk_z);
-		if(c) {
+	for(int zz = -rdist_z; zz < rdist_z; zz += GCHUNK_SIZE_D)
+	for(int yy = -rdist_y; yy < rdist_y; yy += GCHUNK_SIZE_H)
+	for(int xx = -rdist_x; xx < rdist_x; xx += GCHUNK_SIZE_W) {
+		GraphicsChunk *c = find_or_allocate_chunk(xx + chunk_x, yy + chunk_y, zz + chunk_z);
+		if(c && c->state == GSTATE_DONE) {
 			chunk_render_render_water_chunk(c);
 		}
 	}
@@ -633,42 +629,24 @@ faces_worker_func(WorkGroup *wg)
 	arrbuf_init(&solid_faces);
 	arrbuf_init(&water_faces);
 	while(wg_recv(wg, &w)) {
-		bool trying_later = false;
-		switch(w.mode) {
-		case NEW_LOAD:
-			chunk = allocate_chunk_except(w.x, w.y, w.z);
-			if(chunk) {
-				chunk->water_vert_count = 0;
-				chunk->vert_count = 0;
-				chunk->state = GSTATE_INIT;
-			}
-			break;
-		case FORCED:
-			chunk = find_or_allocate_chunk(w.x, w.y, w.z);
-			if(chunk)
-				chunk->state = GSTATE_INIT;
-			break;
-		case TRY_LATER:
-			chunk = find_or_allocate_chunk(w.x, w.y, w.z);
-			chunk->state = GSTATE_INIT;
-			trying_later = true;
-			break;
-		default:
-			assert(0 && "invalid chunk load mode");
-		}
-		
-		if(!chunk)
+		//if(w.mode == TRY_LATER)
+		//	printf("Fuck...\n");
+
+		if(!w.chunk)
 			continue;
 
+		chunk = w.chunk;
+		chunk->state = GSTATE_INIT;
 		arrbuf_clear(&solid_faces);
 		arrbuf_clear(&water_faces);
-		if(!chunk_render_generate_faces(chunk, &solid_faces, &water_faces)) {
+		if(!chunk_render_generate_faces(w.chunk, &solid_faces, &water_faces)) {
 			if(world_can_load(chunk->x, chunk->y, chunk->z)) {
 				w.mode = TRY_LATER;
+				w.chunk = chunk;
 				wg_send(facesg, &w);
+		//		printf("Well...\n");
 			}
 			continue;
-			
 		}
 		
 		lock_gl_context();
@@ -679,63 +657,6 @@ faces_worker_func(WorkGroup *wg)
 	}
 	arrbuf_free(&solid_faces);
 	arrbuf_free(&water_faces);
-}
-
-GraphicsChunk *
-allocate_chunk_except(int x, int y, int z)
-{
-	/* 
-		this reduces the amount of iterations to one,
-		as before i would require to look up for all chunks
-		first to check if the chunk exists, 
-		then start over and look for a free chunk
-	*/
-
-	pthread_mutex_lock(&chunk_mutex);
-	uint32_t h = chunk_coord_hash(x, y, z);
-	GraphicsChunk *c = chunkmap[h];
-	while(c) {
-		if(c->x == x && c->y == y && c->z == z) {
-			pthread_mutex_unlock(&chunk_mutex);
-			return NULL;
-		}
-		c = c->next;
-	}
-
-	GraphicsChunk *free_chunk = NULL;
-	c = chunks;
-	for(; c < chunks + max_chunk_id + 1; c++) {
-		if(c->free) {
-			free_chunk = c;
-			break;
-		} else {
-			/* if it is too far way, treat as a freed too */
-			int dx = abs(c->x - chunk_x);
-			int dy = abs(c->y - chunk_y);
-			int dz = abs(c->z - chunk_z);
-			if(dx > render_distance || dy > render_distance || dz > render_distance) {
-				remove_chunk(c);
-				free_chunk = c;
-				break;
-			}
-		}
-	}
-	if(!free_chunk) {
-		if(c >= chunks + MAX_CHUNKS) {
-			pthread_mutex_unlock(&chunk_mutex);
-			return NULL;
-		}
-		free_chunk = c;
-		max_chunk_id ++;
-	}
-	free_chunk->x = x;
-	free_chunk->y = y;
-	free_chunk->z = z;
-	free_chunk->free = false;
-	insert_chunk(free_chunk);
-	pthread_mutex_unlock(&chunk_mutex);
-
-	return free_chunk;
 }
 
 GraphicsChunk *
@@ -789,83 +710,11 @@ find_or_allocate_chunk(int x, int y, int z)
 	free_chunk->y = y;
 	free_chunk->z = z;
 	free_chunk->free = false;
+	free_chunk->dirty = true;
 	insert_chunk(c);
 	pthread_mutex_unlock(&chunk_mutex);
 
 	return free_chunk;
-}
-
-void
-chunk_render_request_update_block(int x, int y, int z)
-{
-	int chunk_x = x & GCHUNK_MASK_X;
-	int chunk_y = y & GCHUNK_MASK_Y;
-	int chunk_z = z & GCHUNK_MASK_Z;
-
-	int block_x = x & GBLOCK_MASK_X;
-	int block_y = y & GBLOCK_MASK_Y;
-	int block_z = z & GBLOCK_MASK_Z;
-
-	wg_send(facesg, &(ChunkFaceWork){
-		.x = chunk_x,
-		.y = chunk_y,
-		.z = chunk_z,
-		.mode = FORCED
-	});
-
-	if(block_x == 0) {
-		wg_send(facesg, &(ChunkFaceWork){
-			.x = chunk_x - GCHUNK_SIZE_W,
-			.y = chunk_y, 
-			.z = chunk_z,
-			.mode = FORCED
-		});
-	}
-
-	if(block_x == (GCHUNK_SIZE_W - 1)) {
-		wg_send(facesg, &(ChunkFaceWork){
-			.x = chunk_x + GCHUNK_SIZE_W,
-			.y = chunk_y, 
-			.z = chunk_z,
-			.mode = FORCED
-		});
-	}
-
-	if(block_y == 0) {
-		wg_send(facesg, &(ChunkFaceWork){
-			.x = chunk_x,
-			.y = chunk_y - GCHUNK_SIZE_H, 
-			.z = chunk_z,
-			.mode = FORCED
-		});
-	}
-
-	if(block_y == (GCHUNK_SIZE_H - 1)) {
-		wg_send(facesg, &(ChunkFaceWork){
-			.x = chunk_x,
-			.y = chunk_y + GCHUNK_SIZE_H, 
-			.z = chunk_z,
-			.mode = FORCED
-		});
-	}
-
-	if(block_z == 0) {
-		wg_send(facesg, &(ChunkFaceWork){
-			.x = chunk_x,
-			.y = chunk_y, 
-			.z = chunk_z - GCHUNK_SIZE_D,
-			.mode = FORCED
-		});
-	}
-
-	if(block_z == (GCHUNK_SIZE_D - 1)) {
-		wg_send(facesg, &(ChunkFaceWork){
-			.x = chunk_x,
-			.y = chunk_y, 
-			.z = chunk_z + GCHUNK_SIZE_D,
-			.mode = FORCED
-		});
-	}
 }
 
 void
@@ -891,20 +740,9 @@ remove_chunk(GraphicsChunk *c)
 		chunkmap[hash] = c->next;
 }
 
-GraphicsChunk *
-find_chunk(int x, int y, int z)
+void
+chunk_render_request_update_block(int x, int y, int z)
 {
-	uint32_t h = chunk_coord_hash(x, y, z);
-	pthread_mutex_lock(&chunk_mutex);
-	GraphicsChunk *c = chunkmap[h];
-	while(c) {
-		if(!c->free && c->x == x && c->y == y && c->z == z) {
-			pthread_mutex_unlock(&chunk_mutex);
-			return c;
-		}
-		c = c->next;
-	}
-	pthread_mutex_unlock(&chunk_mutex);
-
-	return NULL;
+	GraphicsChunk *c = find_or_allocate_chunk(x, y, z);
+	c->dirty = true;
 }

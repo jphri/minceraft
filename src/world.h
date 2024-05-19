@@ -58,7 +58,7 @@ struct Chunk {
 	int x, y, z;
 	bool free;
 	Chunk *next, *prev;
-	Chunk *next_alloc;
+	Chunk *next_alloc, *prev_alloc;
 };
 
 typedef struct RaycastWorld RaycastWorld;

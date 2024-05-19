@@ -12,13 +12,12 @@
 #include <unistd.h>
 #include <limits.h>
 
-
 typedef struct {
 	int x, y, z;
 	ChunkState state;
 } Work;
 
-#define MAX_BLOCKS 1024
+#define MAX_BLOCKS 512
 #define CHUNK_MAX_BLOCKS (MAX_BLOCKS / CHUNK_SIZE)
 #define MAX_CHUNKS (CHUNK_MAX_BLOCKS * CHUNK_MAX_BLOCKS * CHUNK_MAX_BLOCKS)
 
@@ -50,12 +49,13 @@ static BlockProperties bprop[] = {
 
 static int running;
 
-static Chunk *chunkmap[65536];
+static Chunk *chunkmap[0x10000];
 static Chunk *chunks;
+static int    list_size[0x10000];
 static int cx, cy, cz, cradius;
 static pthread_mutex_t chunk_mutex;
 
-static Chunk *chunks;
+static Chunk *chunks, *last_chunk;
 static volatile int chunk_count;
 
 void
@@ -295,6 +295,16 @@ insert_chunk(Chunk *c)
 	if(chunkmap[hash])
 		chunkmap[hash]->prev = c;
 	chunkmap[hash] = c;
+
+	c->prev_alloc = NULL;
+	c->next_alloc = chunks;
+	if(chunks)
+		chunks->prev_alloc = c;
+	if(!last_chunk)
+		last_chunk = c;
+	chunks = c;
+
+	list_size[hash]++;
 }
 
 void
@@ -307,6 +317,16 @@ remove_chunk(Chunk *c)
 		c->next->prev = c->prev;
 	if(chunkmap[hash] == c)
 		chunkmap[hash] = c->next;
+	list_size[hash]--;
+
+	if(c->prev_alloc)
+		c->prev_alloc->next_alloc = c->next_alloc;
+	if(c->next_alloc)
+		c->next_alloc->prev_alloc = c->prev_alloc;
+	if(c == chunks)
+		chunks = c->next_alloc;
+	if(c == last_chunk)
+		last_chunk = c->prev_alloc;
 }
 
 volatile Chunk *
@@ -383,23 +403,24 @@ allocate_chunk(int x, int y, int z)
 	Chunk *c;
 
 	pthread_mutex_lock(&chunk_mutex);
-	for(c = chunks; c; c = c->next_alloc) {
-		if(c->free) {
-			break;
-		}
+	c = NULL;
+	if(chunk_count > MAX_CHUNKS)
+		for(c = last_chunk; c; c = c->prev_alloc) {
+			if(c->free) {
+				break;
+			}
 
-		int dx = abs(cx - c->x);
-		int dy = abs(cy - c->y);
-		int dz = abs(cz - c->z);
-		if(dx > cradius || dy > cradius || dz > cradius) {
-			remove_chunk(c);
-			break;
+			int dx = abs(cx - c->x);
+			int dy = abs(cy - c->y);
+			int dz = abs(cz - c->z);
+			if(dx > cradius || dy > cradius || dz > cradius) {
+				remove_chunk(c);
+				break;
+			}
 		}
-	}
+		
 	if(c == NULL) {
 		c = malloc(sizeof(*c));
-		c->next_alloc = chunks;
-		chunks = c;
 		chunk_count ++;
 	}
 
@@ -426,4 +447,24 @@ int
 world_allocated_chunks_count()
 {
 	return chunk_count;
+}
+
+void
+world_print_status()
+{
+	int max = -1;
+	int hash_with_max = -1;
+	int sum = 0;
+
+	for(int i = 0; i < 0x10000; i++) {
+		if(max < list_size[i]) {
+			max = list_size[i];
+			hash_with_max = i;
+		}
+		sum += list_size[i];
+	}
+
+	printf("%f | %d (%d)\n",
+		(double)sum / 0x10000, 
+		max, hash_with_max);
 }
