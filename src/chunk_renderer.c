@@ -620,17 +620,12 @@ faces_worker_func(WorkGroup *wg)
 			continue;
 
 		chunk = w.chunk;
-		chunk->state = GSTATE_INIT;
-		arrbuf_clear(&solid_faces);
-		arrbuf_clear(&water_faces);
-		if(!chunk_render_generate_faces(w.chunk, &solid_faces, &water_faces)) {
-			if(world_can_load(chunk->x, chunk->y, chunk->z)) {
-				w.mode = TRY_LATER;
-				w.chunk = chunk;
-				wg_send(facesg, &w);
-			}
-			continue;
-		}
+		
+		do {
+			chunk->state = GSTATE_INIT;
+			arrbuf_clear(&solid_faces);
+			arrbuf_clear(&water_faces);
+		} while(world_can_load(chunk->x, chunk->y, chunk->z) && !chunk_render_generate_faces(w.chunk, &solid_faces, &water_faces));
 		
 		lock_gl_context();
 		chunk_render_generate_buffers(chunk, &solid_faces, &water_faces);
