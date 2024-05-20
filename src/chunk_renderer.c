@@ -721,6 +721,9 @@ remove_chunk(GraphicsChunk *c)
 void
 chunk_render_request_update_block(int x, int y, int z)
 {
+	x &= GCHUNK_MASK_X;
+	y &= GCHUNK_MASK_Y;
+	z &= GCHUNK_MASK_Z;
 	GraphicsChunk *c = find_or_allocate_chunk(x, y, z);
 	c->dirty = true;
 }
