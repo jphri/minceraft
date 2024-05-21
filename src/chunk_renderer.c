@@ -20,12 +20,17 @@ typedef struct {
 	vec2 texcoord;
 } Vertex;
 
+typedef struct {
+	ArrayBuffer solid_buffer, water_buffer, grass_buffer;
+} ChunkBuilder;
+
 typedef struct GraphicsChunk GraphicsChunk;
 struct GraphicsChunk {
 	int x, y, z;
 	unsigned int chunk_vbo, chunk_vao;
 	unsigned int vert_count;
 	unsigned int water_vert_count;
+	unsigned int grass_vert_count;
 	bool free, dirty;
 
 	GraphicsChunk *next, *prev;
@@ -73,6 +78,11 @@ typedef struct {
 #define M_PI_2 (M_PI * 0.5)
 #endif
 
+static void chunk_builder_init(ChunkBuilder *builder);
+static void chunk_builder_terminate(ChunkBuilder *builder);
+static bool build_chunk(ChunkBuilder *builder, GraphicsChunk *chunk);
+static void update_chunk(ChunkBuilder *builder, int cx, int cy, int cz);
+
 static GraphicsChunk *find_or_allocate_chunk(int x, int y, int z);
 
 static void insert_chunk(GraphicsChunk *chunk);
@@ -88,8 +98,6 @@ static void faces_worker_func(WorkGroup *wg);
 static void load_programs();
 static void load_buffers();
 static void load_textures();
-static void update_chunk(int cx, int cy, int cz);
-static bool generate_faces(GraphicsChunk *chunk, ArrayBuffer *soild_faces, ArrayBuffer *water_faces);
 static void manhattan_load(int x, int y, int z, int r);
 
 static int faces[BLOCK_LAST][6] = {
@@ -144,11 +152,8 @@ static WorkGroup *glbuffersg;
 static pthread_mutex_t chunk_mutex;
 static int chunk_x, chunk_y, chunk_z;
 static int render_distance;
-
-static ArrayBuffer wbuffer_update;
-static ArrayBuffer sbuffer_update;
-
 static size_t update_chunk_count;
+static ChunkBuilder main_builder;
 
 void
 chunk_render_init()
@@ -167,8 +172,7 @@ chunk_render_init()
 	facesg = wg_init(faces_worker_func, sizeof(ChunkFaceWork), MAX_WORK, 6);
 	glbuffersg = wg_init(NULL, sizeof(ChunkFaceWork), MAX_WORK, 0);
 
-	arrbuf_init(&wbuffer_update);
-	arrbuf_init(&sbuffer_update);
+	chunk_builder_init(&main_builder);
 }
 
 void
@@ -183,9 +187,7 @@ chunk_render_terminate()
 			glDeleteVertexArrays(1, &chunks[i].chunk_vao);
 		}
 	}
-
-	arrbuf_free(&wbuffer_update);
-	arrbuf_free(&sbuffer_update);
+	chunk_builder_terminate(&main_builder);
 }
 
 void
@@ -224,10 +226,16 @@ chunk_render_update()
 void
 chunk_render_render_solid_chunk(GraphicsChunk *c)
 {
+	glUniform3fv(chunk_position_uni, 1, (vec3){ c->x, c->y, c->z });
+	glBindVertexArray(c->chunk_vao);
 	if(c->vert_count > 0) {
-		glUniform3fv(chunk_position_uni, 1, (vec3){ c->x, c->y, c->z });
-		glBindVertexArray(c->chunk_vao);
+		glEnable(GL_CULL_FACE);
 		glDrawArrays(GL_TRIANGLES, 0, c->vert_count);
+	}
+
+	if(c->grass_vert_count > 0) {
+		glDisable(GL_CULL_FACE);
+		glDrawArrays(GL_TRIANGLES, c->vert_count + c->water_vert_count, c->grass_vert_count);
 	}
 }
 
@@ -241,67 +249,6 @@ chunk_render_render_water_chunk(GraphicsChunk *c)
 	}
 }
 
-bool
-generate_faces(GraphicsChunk *chunk, ArrayBuffer *solid_faces, ArrayBuffer *water_faces)
-{
-	Block face_blocks[6];
-
-	#define LOAD_BLOCK(BLOCK, X, Y, Z) if((BLOCK = world_get_block(X, Y, Z)) == BLOCK_UNLOADED) return false;
-	arrbuf_clear(solid_faces);
-	arrbuf_clear(water_faces);
-	chunk->state = GSTATE_MESHING;
-	for(chunk->zz = 0; chunk->zz < GCHUNK_SIZE_D; chunk->zz++)
-		for(chunk->yy = 0; chunk->yy < GCHUNK_SIZE_H; chunk->yy++)
-			for(chunk->xx = 0; chunk->xx < GCHUNK_SIZE_W; chunk->xx++) {
-				Block block;
-				int x, y, z;
-
-				x = chunk->xx + chunk->x;
-				y = chunk->yy + chunk->y;
-				z = chunk->zz + chunk->z;
-
-				LOAD_BLOCK(block, x, y, z);
-				LOAD_BLOCK(face_blocks[TOP], x, y + 1, z);
-				LOAD_BLOCK(face_blocks[BOTTOM], x, y - 1, z);
-				LOAD_BLOCK(face_blocks[LEFT], x - 1, y, z);
-				LOAD_BLOCK(face_blocks[RIGHT], x + 1, y, z);
-				LOAD_BLOCK(face_blocks[FRONT], x, y, z + 1);
-				LOAD_BLOCK(face_blocks[BACK], x, y, z - 1);
-
-				switch(block) {
-					case BLOCK_UNLOADED:
-						return false;
-					case 0:
-						continue;
-					case BLOCK_WATER:
-						chunk_generate_face_water(chunk->xx, chunk->yy, chunk->zz, block, face_blocks, water_faces);
-						break;
-					case BLOCK_ROSE:
-					case BLOCK_GRASS_BLADES:
-						chunk_generate_face_grass(chunk->xx, chunk->yy, chunk->zz, block, solid_faces);
-						break;
-					default:
-						chunk_generate_face(chunk->xx, chunk->yy, chunk->zz, block, face_blocks, solid_faces);
-				}
-			}
-	
-	chunk->vert_count = arrbuf_length(solid_faces, sizeof(Vertex));
-	chunk->water_vert_count = arrbuf_length(water_faces, sizeof(Vertex));
-
-	size_t size = solid_faces->size + water_faces->size;
-
-	lock_gl_context();
-	glBindBuffer(GL_ARRAY_BUFFER, chunk->chunk_vbo);
-	glBufferData(GL_ARRAY_BUFFER, size, NULL, GL_STATIC_DRAW);
-	glBufferSubData(GL_ARRAY_BUFFER, 0, solid_faces->size, solid_faces->data);
-	glBufferSubData(GL_ARRAY_BUFFER, solid_faces->size, water_faces->size, water_faces->data);
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
-	update_chunk_count++;
-	unlock_gl_context();
-
-	chunk->state = GSTATE_DONE;
-	return true;
-}
 
 bool
 load_texture(Texture *texture, const char *path)
@@ -621,19 +568,17 @@ void
 faces_worker_func(WorkGroup *wg)
 {
 	ChunkFaceWork w;
-	ArrayBuffer solid_faces, water_faces;
 	GraphicsChunk *chunk;
+	ChunkBuilder builder;
 
-	arrbuf_init(&solid_faces);
-	arrbuf_init(&water_faces);
+	chunk_builder_init(&builder);
 	while(wg_recv(wg, &w)) {
 		if(!w.chunk)
 			continue;
 		chunk = w.chunk;
-		while(world_can_load(chunk->x, chunk->y, chunk->z) && !generate_faces(w.chunk, &solid_faces, &water_faces));
+		while(world_can_load(chunk->x, chunk->y, chunk->z) && !build_chunk(&builder, chunk));
 	}
-	arrbuf_free(&solid_faces);
-	arrbuf_free(&water_faces);
+	chunk_builder_terminate(&builder);
 }
 
 GraphicsChunk *
@@ -728,24 +673,24 @@ chunk_render_request_update_block(int x, int y, int z)
 	int block_y = y & GBLOCK_MASK_Y;
 	int block_z = z & GBLOCK_MASK_Z;
 
-	update_chunk(chunk_x, chunk_y, chunk_z);
+	update_chunk(&main_builder, chunk_x, chunk_y, chunk_z);
 	if(block_x == 0)
-		update_chunk(chunk_x - GCHUNK_SIZE_W, chunk_y, chunk_z);
+		update_chunk(&main_builder, chunk_x - GCHUNK_SIZE_W, chunk_y, chunk_z);
 
 	if(block_x == GBLOCK_MASK_X)
-		update_chunk(chunk_x + GCHUNK_SIZE_W, chunk_y, chunk_z);
+		update_chunk(&main_builder, chunk_x + GCHUNK_SIZE_W, chunk_y, chunk_z);
 
 	if(block_y == 0)
-		update_chunk(chunk_x, chunk_y - GCHUNK_SIZE_H, chunk_z);
+		update_chunk(&main_builder, chunk_x, chunk_y - GCHUNK_SIZE_H, chunk_z);
 
 	if(block_y == GBLOCK_MASK_Y)
-		update_chunk(chunk_x, chunk_y + GCHUNK_SIZE_H, chunk_z);
+		update_chunk(&main_builder, chunk_x, chunk_y + GCHUNK_SIZE_H, chunk_z);
 
 	if(block_z == 0)
-		update_chunk(chunk_x, chunk_y, chunk_z - GCHUNK_SIZE_D);
+		update_chunk(&main_builder, chunk_x, chunk_y, chunk_z - GCHUNK_SIZE_D);
 
 	if(block_z == GBLOCK_MASK_Z)
-		update_chunk(chunk_x, chunk_y, chunk_z + GCHUNK_SIZE_D);
+		update_chunk(&main_builder, chunk_x, chunk_y, chunk_z + GCHUNK_SIZE_D);
 }
 
 void
@@ -773,14 +718,93 @@ manhattan_load(int x, int y, int z, int r)
 	}
 }
 
+void
+chunk_builder_init(ChunkBuilder *builder)
+{
+	arrbuf_init(&builder->solid_buffer);
+	arrbuf_init(&builder->water_buffer);
+	arrbuf_init(&builder->grass_buffer);
+}
 
 void
-update_chunk(int cx, int cy, int cz)
+chunk_builder_terminate(ChunkBuilder *builder)
+{
+	arrbuf_free(&builder->solid_buffer);
+	arrbuf_free(&builder->water_buffer);
+	arrbuf_free(&builder->grass_buffer);
+}
+
+bool
+build_chunk(ChunkBuilder *builder, GraphicsChunk *chunk)
+{
+	Block face_blocks[6];
+
+	#define LOAD_BLOCK(BLOCK, X, Y, Z) if((BLOCK = world_get_block(X, Y, Z)) == BLOCK_UNLOADED) return false;
+	arrbuf_clear(&builder->solid_buffer);
+	arrbuf_clear(&builder->water_buffer);
+	arrbuf_clear(&builder->grass_buffer);
+	chunk->state = GSTATE_MESHING;
+	for(chunk->zz = 0; chunk->zz < GCHUNK_SIZE_D; chunk->zz++)
+		for(chunk->yy = 0; chunk->yy < GCHUNK_SIZE_H; chunk->yy++)
+			for(chunk->xx = 0; chunk->xx < GCHUNK_SIZE_W; chunk->xx++) {
+				Block block;
+				int x, y, z;
+
+				x = chunk->xx + chunk->x;
+				y = chunk->yy + chunk->y;
+				z = chunk->zz + chunk->z;
+
+				LOAD_BLOCK(block, x, y, z);
+				LOAD_BLOCK(face_blocks[TOP], x, y + 1, z);
+				LOAD_BLOCK(face_blocks[BOTTOM], x, y - 1, z);
+				LOAD_BLOCK(face_blocks[LEFT], x - 1, y, z);
+				LOAD_BLOCK(face_blocks[RIGHT], x + 1, y, z);
+				LOAD_BLOCK(face_blocks[FRONT], x, y, z + 1);
+				LOAD_BLOCK(face_blocks[BACK], x, y, z - 1);
+
+				switch(block) {
+					case BLOCK_UNLOADED:
+						return false;
+					case 0:
+						continue;
+					case BLOCK_WATER:
+						chunk_generate_face_water(chunk->xx, chunk->yy, chunk->zz, block, face_blocks, &builder->water_buffer);
+						break;
+					case BLOCK_ROSE:
+					case BLOCK_GRASS_BLADES:
+						chunk_generate_face_grass(chunk->xx, chunk->yy, chunk->zz, block, &builder->grass_buffer);
+						break;
+					default:
+						chunk_generate_face(chunk->xx, chunk->yy, chunk->zz, block, face_blocks, &builder->solid_buffer);
+				}
+			}
+	
+	chunk->vert_count = arrbuf_length(&builder->solid_buffer, sizeof(Vertex));
+	chunk->water_vert_count = arrbuf_length(&builder->water_buffer, sizeof(Vertex));
+	chunk->grass_vert_count = arrbuf_length(&builder->grass_buffer, sizeof(Vertex));
+	size_t size = builder->solid_buffer.size + builder->water_buffer.size + builder->grass_buffer.size;
+
+	lock_gl_context();
+	glBindBuffer(GL_ARRAY_BUFFER, chunk->chunk_vbo);
+	glBufferData(GL_ARRAY_BUFFER, size, NULL, GL_DYNAMIC_DRAW);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, builder->solid_buffer.size, builder->solid_buffer.data);
+	glBufferSubData(GL_ARRAY_BUFFER, builder->solid_buffer.size, builder->water_buffer.size, builder->water_buffer.data);
+	glBufferSubData(GL_ARRAY_BUFFER, builder->solid_buffer.size + builder->water_buffer.size, builder->grass_buffer.size, builder->grass_buffer.data);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	update_chunk_count++;
+	unlock_gl_context();
+	chunk->state = GSTATE_DONE;
+	return true;
+}
+
+void
+update_chunk(ChunkBuilder *builder, int cx, int cy, int cz)
 {
 	if(!world_can_load(cx, cy, cz))
 		return;
 
 	GraphicsChunk *c = find_or_allocate_chunk(cx, cy, cz);
 	if(c->state == GSTATE_DONE)
-		generate_faces(c, &sbuffer_update, &wbuffer_update);
+		while(!build_chunk(builder, c));
 }
+
