@@ -51,7 +51,6 @@ static int running;
 
 static Chunk *chunkmap[0x10000];
 static Chunk *chunks;
-static int    list_size[0x10000];
 static int cx, cy, cz, cradius;
 static pthread_mutex_t chunk_mutex;
 
@@ -303,8 +302,6 @@ insert_chunk(Chunk *c)
 	if(!last_chunk)
 		last_chunk = c;
 	chunks = c;
-
-	list_size[hash]++;
 }
 
 void
@@ -317,7 +314,6 @@ remove_chunk(Chunk *c)
 		c->next->prev = c->prev;
 	if(chunkmap[hash] == c)
 		chunkmap[hash] = c->next;
-	list_size[hash]--;
 
 	if(c->prev_alloc)
 		c->prev_alloc->next_alloc = c->next_alloc;

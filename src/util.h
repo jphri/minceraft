@@ -211,7 +211,7 @@ static inline int clampi(int x, int minv, int maxv) {
 }
 
 static inline uint32_t hash_int(uint32_t i) {
-    i *= 3551332717;
+	i *= 3551332717;
 	i ^= ((i >> 15) | (i << 17));
 	return i;
 }
