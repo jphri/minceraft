@@ -13,4 +13,6 @@ void chunk_render_request_update_block(int x, int y, int z);
 
 void chunk_render();
 
+size_t chunk_render_update_count();
+
 #endif

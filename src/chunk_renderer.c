@@ -33,7 +33,6 @@ struct GraphicsChunk {
 	enum {
 		GSTATE_INIT,
 		GSTATE_MESHING,
-		GSTATE_MESHED,
 		GSTATE_DONE
 	} state;
 	int xx, yy, zz;
@@ -74,10 +73,6 @@ typedef struct {
 #define M_PI_2 (M_PI * 0.5)
 #endif
 
-static GraphicsChunk chunks[MAX_CHUNKS];
-static GraphicsChunk *chunkmap[65536];
-static int max_chunk_id;
-
 static GraphicsChunk *find_or_allocate_chunk(int x, int y, int z);
 
 static void insert_chunk(GraphicsChunk *chunk);
@@ -93,6 +88,8 @@ static void faces_worker_func(WorkGroup *wg);
 static void load_programs();
 static void load_buffers();
 static void load_textures();
+static void update_chunk(int cx, int cy, int cz);
+static bool generate_faces(GraphicsChunk *chunk, ArrayBuffer *soild_faces, ArrayBuffer *water_faces);
 static void manhattan_load(int x, int y, int z, int r);
 
 static int faces[BLOCK_LAST][6] = {
@@ -131,6 +128,10 @@ static int faces[BLOCK_LAST][6] = {
 	}
 };
 
+static GraphicsChunk chunks[MAX_CHUNKS];
+static GraphicsChunk *chunkmap[65536];
+static int max_chunk_id;
+
 static unsigned int chunk_program;
 static unsigned int projection_uni, view_uni, terrain_uni, chunk_position_uni,
 					alpha_uni;
@@ -141,9 +142,13 @@ static WorkGroup *facesg;
 static WorkGroup *glbuffersg;
 
 static pthread_mutex_t chunk_mutex;
-
 static int chunk_x, chunk_y, chunk_z;
 static int render_distance;
+
+static ArrayBuffer wbuffer_update;
+static ArrayBuffer sbuffer_update;
+
+static size_t update_chunk_count;
 
 void
 chunk_render_init()
@@ -161,6 +166,9 @@ chunk_render_init()
 
 	facesg = wg_init(faces_worker_func, sizeof(ChunkFaceWork), MAX_WORK, 6);
 	glbuffersg = wg_init(NULL, sizeof(ChunkFaceWork), MAX_WORK, 0);
+
+	arrbuf_init(&wbuffer_update);
+	arrbuf_init(&sbuffer_update);
 }
 
 void
@@ -175,6 +183,9 @@ chunk_render_terminate()
 			glDeleteVertexArrays(1, &chunks[i].chunk_vao);
 		}
 	}
+
+	arrbuf_free(&wbuffer_update);
+	arrbuf_free(&sbuffer_update);
 }
 
 void
@@ -231,72 +242,65 @@ chunk_render_render_water_chunk(GraphicsChunk *c)
 }
 
 bool
-chunk_render_generate_faces(GraphicsChunk *chunk, ArrayBuffer *solid_faces, ArrayBuffer *water_faces)
+generate_faces(GraphicsChunk *chunk, ArrayBuffer *solid_faces, ArrayBuffer *water_faces)
 {
 	Block face_blocks[6];
 
 	#define LOAD_BLOCK(BLOCK, X, Y, Z) if((BLOCK = world_get_block(X, Y, Z)) == BLOCK_UNLOADED) return false;
-	
-	switch(chunk->state) {
-	case GSTATE_INIT:
-		chunk->state = GSTATE_MESHING;
-		for(chunk->zz = 0; chunk->zz < GCHUNK_SIZE_D; chunk->zz++)
-			for(chunk->yy = 0; chunk->yy < GCHUNK_SIZE_H; chunk->yy++)
-				for(chunk->xx = 0; chunk->xx < GCHUNK_SIZE_W; chunk->xx++) {
-					Block block;
-					int x, y, z;
-					
-	case GSTATE_MESHING:
-					x = chunk->xx + chunk->x;
-					y = chunk->yy + chunk->y;
-					z = chunk->zz + chunk->z;
+	arrbuf_clear(solid_faces);
+	arrbuf_clear(water_faces);
+	chunk->state = GSTATE_MESHING;
+	for(chunk->zz = 0; chunk->zz < GCHUNK_SIZE_D; chunk->zz++)
+		for(chunk->yy = 0; chunk->yy < GCHUNK_SIZE_H; chunk->yy++)
+			for(chunk->xx = 0; chunk->xx < GCHUNK_SIZE_W; chunk->xx++) {
+				Block block;
+				int x, y, z;
 
-					LOAD_BLOCK(block, x, y, z);
-					LOAD_BLOCK(face_blocks[TOP], x, y + 1, z);
-					LOAD_BLOCK(face_blocks[BOTTOM], x, y - 1, z);
-					LOAD_BLOCK(face_blocks[LEFT], x - 1, y, z);
-					LOAD_BLOCK(face_blocks[RIGHT], x + 1, y, z);
-					LOAD_BLOCK(face_blocks[FRONT], x, y, z + 1);
-					LOAD_BLOCK(face_blocks[BACK], x, y, z - 1);
-					
-					switch(block) {
-						case BLOCK_UNLOADED:
-							return false;
-						case 0:
-							continue;
-						case BLOCK_WATER:
-							chunk_generate_face_water(chunk->xx, chunk->yy, chunk->zz, block, face_blocks, water_faces);
-							break;
-						case BLOCK_ROSE:
-						case BLOCK_GRASS_BLADES:
-							chunk_generate_face_grass(chunk->xx, chunk->yy, chunk->zz, block, solid_faces);
-							break;
-						default:
-							chunk_generate_face(chunk->xx, chunk->yy, chunk->zz, block, face_blocks, solid_faces);
-					}
+				x = chunk->xx + chunk->x;
+				y = chunk->yy + chunk->y;
+				z = chunk->zz + chunk->z;
+
+				LOAD_BLOCK(block, x, y, z);
+				LOAD_BLOCK(face_blocks[TOP], x, y + 1, z);
+				LOAD_BLOCK(face_blocks[BOTTOM], x, y - 1, z);
+				LOAD_BLOCK(face_blocks[LEFT], x - 1, y, z);
+				LOAD_BLOCK(face_blocks[RIGHT], x + 1, y, z);
+				LOAD_BLOCK(face_blocks[FRONT], x, y, z + 1);
+				LOAD_BLOCK(face_blocks[BACK], x, y, z - 1);
+
+				switch(block) {
+					case BLOCK_UNLOADED:
+						return false;
+					case 0:
+						continue;
+					case BLOCK_WATER:
+						chunk_generate_face_water(chunk->xx, chunk->yy, chunk->zz, block, face_blocks, water_faces);
+						break;
+					case BLOCK_ROSE:
+					case BLOCK_GRASS_BLADES:
+						chunk_generate_face_grass(chunk->xx, chunk->yy, chunk->zz, block, solid_faces);
+						break;
+					default:
+						chunk_generate_face(chunk->xx, chunk->yy, chunk->zz, block, face_blocks, solid_faces);
 				}
-		chunk->state = GSTATE_MESHED;
-	default:
-		break;
-	}
-
-	return true;
-}
-
-void
-chunk_render_generate_buffers(GraphicsChunk *chunk, ArrayBuffer *solid_faces, ArrayBuffer *water_faces)
-{
-
+			}
+	
 	chunk->vert_count = arrbuf_length(solid_faces, sizeof(Vertex));
 	chunk->water_vert_count = arrbuf_length(water_faces, sizeof(Vertex));
 
 	size_t size = solid_faces->size + water_faces->size;
 
+	lock_gl_context();
 	glBindBuffer(GL_ARRAY_BUFFER, chunk->chunk_vbo);
 	glBufferData(GL_ARRAY_BUFFER, size, NULL, GL_STATIC_DRAW);
 	glBufferSubData(GL_ARRAY_BUFFER, 0, solid_faces->size, solid_faces->data);
 	glBufferSubData(GL_ARRAY_BUFFER, solid_faces->size, water_faces->size, water_faces->data);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	update_chunk_count++;
+	unlock_gl_context();
+
+	chunk->state = GSTATE_DONE;
+	return true;
 }
 
 bool
@@ -324,6 +328,7 @@ load_texture(Texture *texture, const char *path)
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glBindTexture(GL_TEXTURE_2D, 0);
 	
+	stbi_image_free(image_data);
 	return true;
 }
 
@@ -606,6 +611,12 @@ chunk_render()
 	unlock_gl_context();
 }
 
+size_t
+chunk_render_update_count()
+{
+	return update_chunk_count;
+}
+
 void
 faces_worker_func(WorkGroup *wg)
 {
@@ -618,20 +629,8 @@ faces_worker_func(WorkGroup *wg)
 	while(wg_recv(wg, &w)) {
 		if(!w.chunk)
 			continue;
-
 		chunk = w.chunk;
-		
-		do {
-			chunk->state = GSTATE_INIT;
-			arrbuf_clear(&solid_faces);
-			arrbuf_clear(&water_faces);
-		} while(world_can_load(chunk->x, chunk->y, chunk->z) && !chunk_render_generate_faces(w.chunk, &solid_faces, &water_faces));
-		
-		lock_gl_context();
-		chunk_render_generate_buffers(chunk, &solid_faces, &water_faces);
-		unlock_gl_context();
-
-		chunk->state = GSTATE_DONE;
+		while(world_can_load(chunk->x, chunk->y, chunk->z) && !generate_faces(w.chunk, &solid_faces, &water_faces));
 	}
 	arrbuf_free(&solid_faces);
 	arrbuf_free(&water_faces);
@@ -721,11 +720,32 @@ remove_chunk(GraphicsChunk *c)
 void
 chunk_render_request_update_block(int x, int y, int z)
 {
-	x &= GCHUNK_MASK_X;
-	y &= GCHUNK_MASK_Y;
-	z &= GCHUNK_MASK_Z;
-	GraphicsChunk *c = find_or_allocate_chunk(x, y, z);
-	c->dirty = true;
+	int chunk_x = x & GCHUNK_MASK_X;
+	int chunk_y = y & GCHUNK_MASK_Y;
+	int chunk_z = z & GCHUNK_MASK_Z;
+
+	int block_x = x & GBLOCK_MASK_X;
+	int block_y = y & GBLOCK_MASK_Y;
+	int block_z = z & GBLOCK_MASK_Z;
+
+	update_chunk(chunk_x, chunk_y, chunk_z);
+	if(block_x == 0)
+		update_chunk(chunk_x - GCHUNK_SIZE_W, chunk_y, chunk_z);
+
+	if(block_x == GBLOCK_MASK_X)
+		update_chunk(chunk_x + GCHUNK_SIZE_W, chunk_y, chunk_z);
+
+	if(block_y == 0)
+		update_chunk(chunk_x, chunk_y - GCHUNK_SIZE_H, chunk_z);
+
+	if(block_y == GBLOCK_MASK_Y)
+		update_chunk(chunk_x, chunk_y + GCHUNK_SIZE_H, chunk_z);
+
+	if(block_z == 0)
+		update_chunk(chunk_x, chunk_y, chunk_z - GCHUNK_SIZE_D);
+
+	if(block_z == GBLOCK_MASK_Z)
+		update_chunk(chunk_x, chunk_y, chunk_z + GCHUNK_SIZE_D);
 }
 
 void
@@ -753,3 +773,14 @@ manhattan_load(int x, int y, int z, int r)
 	}
 }
 
+
+void
+update_chunk(int cx, int cy, int cz)
+{
+	if(!world_can_load(cx, cy, cz))
+		return;
+
+	GraphicsChunk *c = find_or_allocate_chunk(cx, cy, cz);
+	if(c->state == GSTATE_DONE)
+		generate_faces(c, &sbuffer_update, &wbuffer_update);
+}

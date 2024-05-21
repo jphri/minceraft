@@ -61,7 +61,7 @@ static pthread_mutex_t context_mtx;
 static Player player;
 static int frames;
 static float fps_time;
-static int old_chunk_count;
+static int old_chunk_count, old_update_count;
 
 int
 main()
@@ -102,6 +102,7 @@ main()
 	glfwShowWindow(window);
 	pre_time = glfwGetTime();
 	old_chunk_count = world_allocated_chunks_count();
+	old_update_count = chunk_render_update_count();
 	while(!glfwWindowShouldClose(window)) {
 		int w, h;
 		double curr_time = glfwGetTime();
@@ -134,8 +135,12 @@ main()
 			int current = world_allocated_chunks_count();
 			int cdelta = current - old_chunk_count;
 			old_chunk_count = current;
-
-			printf("FPS: %d (%d chunks (%0.2f MB), %d new chunks...)\n", frames, current, (current * sizeof(Chunk) / (1024.0 * 1024.0)), cdelta);
+			
+			int ucurrent = chunk_render_update_count();
+			int udelta = ucurrent - old_update_count;
+			old_update_count = ucurrent;
+			
+			printf("FPS: %d (%d chunks (%0.2f MB), %d new chunks, %d mesh updates)\n", frames, current, (current * sizeof(Chunk) / (1024.0 * 1024.0)), cdelta, udelta);
 			frames = 0;
 			fps_time = 0;
 		}
