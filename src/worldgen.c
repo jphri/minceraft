@@ -7,13 +7,13 @@
 #include <noise1234.h>
 #include <assert.h>
 
-#define X_SCALE (0.0625 / CHUNK_SIZE)
-#define Y_SCALE (0.0625 / CHUNK_SIZE)
-#define Z_SCALE (0.0625 / CHUNK_SIZE)
+#define X_SCALE (0.0625 / 16)
+#define Y_SCALE (0.0625 / 16)
+#define Z_SCALE (0.0625 / 16)
 
 #define HEIGHT_AMPL 1.25
-#define HEIGHT_SCALE (vec2){ 0.0625 / (4 * CHUNK_SIZE), 0.0625 / (4 * CHUNK_SIZE) }
-#define NOISE3_SCALE (vec3){ 0.125 / CHUNK_SIZE, 0.2 / CHUNK_SIZE, 0.125 / CHUNK_SIZE }
+#define HEIGHT_SCALE (vec2){ 0.0625 / (4 * 16), 0.0625 / (4 * 16) }
+#define NOISE3_SCALE (vec3){ 0.125 / 16, 0.2 / 16, 0.125 / 16 }
 
 #define GROUND_HEIGHT 64
 
@@ -92,6 +92,9 @@ wgen_surface(int cx, int cy, int cz)
 			int i;
 			for(i = 1; i < 4; i++) {
 				float den = world_get_density(x, y + i, z, CSTATE_SHAPED);
+				if(den == NAN)
+					return;
+
 				if(den <= 0)
 					break;
 			}
@@ -120,7 +123,13 @@ wgen_decorate(int cx, int cy, int cz)
 			continue;
 		}
 
-		if(world_get_density(x, y, z, CSTATE_SHAPED) < 0 && world_get_density(x, y - 1, z, CSTATE_SHAPED) >= 0) {
+		if(world_get_density(x, y, z, CSTATE_SHAPED) < 0) {
+			float den = world_get_density(x, y - 1, z, CSTATE_SHAPED);
+			if(den == NAN)
+				return;
+
+			if(den < 0)
+				continue;
 			
 			if(y > GROUND_HEIGHT) {
 				int hash = hash_coord(grass_flower_hash, x, y, z);

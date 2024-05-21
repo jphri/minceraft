@@ -12,15 +12,14 @@
 #include <unistd.h>
 #include <limits.h>
 
-
 typedef struct {
 	int x, y, z;
 	ChunkState state;
 } Work;
 
-#define MAX_CHUNKS 8192
-#define MAX_WORK 1024
-#define NUM_WORKERS 4
+#define MAX_BLOCKS 512
+#define CHUNK_MAX_BLOCKS (MAX_BLOCKS / CHUNK_SIZE)
+#define MAX_CHUNKS (CHUNK_MAX_BLOCKS * CHUNK_MAX_BLOCKS * CHUNK_MAX_BLOCKS)
 
 static volatile Chunk *find_chunk(int x, int y, int z, ChunkState state);
 static volatile Chunk *chunk_gen(int x, int y, int z, ChunkState state);
@@ -50,22 +49,20 @@ static BlockProperties bprop[] = {
 
 static int running;
 
-static Chunk *chunkmap[65536];
+static Chunk *chunkmap[0x10000];
 static Chunk *chunks;
-static volatile int max_chunk_id;
 static int cx, cy, cz, cradius;
 static pthread_mutex_t chunk_mutex;
+
+static Chunk *chunks, *last_chunk;
+static volatile int chunk_count;
 
 void
 world_init()
 {
 	running = true;
 
-	chunks = malloc(sizeof(Chunk) * MAX_CHUNKS);
-	for(int i = 0; i < MAX_CHUNKS; i++) {
-		chunks[i].free = true;
-		chunks[i].state = CSTATE_FREE;
-	}
+	chunks = NULL;
 	memset(chunkmap, 0, sizeof(chunkmap));
 	pthread_mutex_init(&chunk_mutex, NULL);
 }
@@ -97,7 +94,10 @@ world_get(int x, int y, int z, ChunkState state)
 	int chunk_z = z & CHUNK_MASK;
 
 	volatile Chunk *ch;
-	while((ch = chunk_gen(chunk_x, chunk_y, chunk_z, state)) == NULL);
+	if(!(ch = chunk_gen(chunk_x, chunk_y, chunk_z, state))) {
+		return BLOCK_UNLOADED;
+	}
+	
 
 	x &= BLOCK_MASK;
 	y &= BLOCK_MASK;
@@ -114,7 +114,9 @@ world_get_density(int x, int y, int z, ChunkState state)
 	int chunk_z = z & CHUNK_MASK;
 
 	volatile Chunk *ch;
-	while((ch = chunk_gen(chunk_x, chunk_y, chunk_z, state)) == NULL);
+	if(!(ch = chunk_gen(chunk_x, chunk_y, chunk_z, state))) {
+		return NAN;
+	}
 
 	x &= BLOCK_MASK;
 	y &= BLOCK_MASK;
@@ -131,7 +133,9 @@ world_set_density(int x, int y, int z, ChunkState state, float r)
 	int chunk_z = z & CHUNK_MASK;
 
 	volatile Chunk *ch;
-	while((ch = chunk_gen(chunk_x, chunk_y, chunk_z, state)) == NULL);
+	if(!(ch = chunk_gen(chunk_x, chunk_y, chunk_z, state))) {
+		return;
+	}
 
 	x &= BLOCK_MASK;
 	y &= BLOCK_MASK;
@@ -154,7 +158,9 @@ world_set(int x, int y, int z, ChunkState state, Block block)
 	int chunk_z = z & CHUNK_MASK;
 
 	volatile Chunk *ch;
-	while((ch = chunk_gen(chunk_x, chunk_y, chunk_z, state)) == NULL);
+	if(!(ch = chunk_gen(chunk_x, chunk_y, chunk_z, state))) {
+		return;
+	}
 
 	x &= BLOCK_MASK;
 	y &= BLOCK_MASK;
@@ -288,6 +294,14 @@ insert_chunk(Chunk *c)
 	if(chunkmap[hash])
 		chunkmap[hash]->prev = c;
 	chunkmap[hash] = c;
+
+	c->prev_alloc = NULL;
+	c->next_alloc = chunks;
+	if(chunks)
+		chunks->prev_alloc = c;
+	if(!last_chunk)
+		last_chunk = c;
+	chunks = c;
 }
 
 void
@@ -300,11 +314,23 @@ remove_chunk(Chunk *c)
 		c->next->prev = c->prev;
 	if(chunkmap[hash] == c)
 		chunkmap[hash] = c->next;
+
+	if(c->prev_alloc)
+		c->prev_alloc->next_alloc = c->next_alloc;
+	if(c->next_alloc)
+		c->next_alloc->prev_alloc = c->prev_alloc;
+	if(c == chunks)
+		chunks = c->next_alloc;
+	if(c == last_chunk)
+		last_chunk = c->prev_alloc;
 }
 
 volatile Chunk *
 chunk_gen(int x, int y, int z, ChunkState target_state)
 {
+	if(!world_can_load(x, y, z))
+		return NULL;
+
 	volatile Chunk *c = find_chunk(x, y, z, 0);
 	if(!c) {
 		c = allocate_chunk(x, y, z);
@@ -372,24 +398,26 @@ allocate_chunk(int x, int y, int z)
 {
 	Chunk *c;
 
-	assert(max_chunk_id < MAX_CHUNKS);
 	pthread_mutex_lock(&chunk_mutex);
-	for(c = chunks; c <= chunks + max_chunk_id; c++) {
-		if(c->free) {
-			break;
-		}
+	c = NULL;
+	if(chunk_count > MAX_CHUNKS)
+		for(c = last_chunk; c; c = c->prev_alloc) {
+			if(c->free) {
+				break;
+			}
 
-		int dx = abs(cx - c->x);
-		int dy = abs(cy - c->y);
-		int dz = abs(cz - c->z);
-		if(dx > cradius || dy > cradius || dz > cradius) {
-			remove_chunk(c);
-			break;
+			int dx = abs(cx - c->x);
+			int dy = abs(cy - c->y);
+			int dz = abs(cz - c->z);
+			if(dx > cradius || dy > cradius || dz > cradius) {
+				remove_chunk(c);
+				break;
+			}
 		}
-	}
-	if(c - chunks > max_chunk_id) { 
-		max_chunk_id++;
-		c = chunks + max_chunk_id;
+		
+	if(c == NULL) {
+		c = malloc(sizeof(*c));
+		chunk_count ++;
 	}
 
 	c->free = false;
@@ -401,3 +429,19 @@ allocate_chunk(int x, int y, int z)
 	pthread_mutex_unlock(&chunk_mutex);
 	return c;
 }
+
+bool
+world_can_load(int x, int y, int z)
+{
+	int dx = abs(cx - x);
+	int dy = abs(cy - y);
+	int dz = abs(cz - z);
+	return dx <= cradius && dy <= cradius && dz <= cradius;
+}
+
+int
+world_allocated_chunks_count()
+{
+	return chunk_count;
+}
+

@@ -58,6 +58,7 @@ struct Chunk {
 	int x, y, z;
 	bool free;
 	Chunk *next, *prev;
+	Chunk *next_alloc, *prev_alloc;
 };
 
 typedef struct RaycastWorld RaycastWorld;
@@ -98,7 +99,10 @@ void block_face_to_dir(Direction dir, vec3 out);
 const BlockProperties *block_properties(Block block);
 
 void world_set_load_border(int x, int y, int z, int radius);
+bool world_can_load(int x, int y, int z);
 
 uint32_t chunk_coord_hash(int x, int y, int z);
+
+int world_allocated_chunks_count();
 
 #endif

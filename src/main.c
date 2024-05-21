@@ -1,3 +1,4 @@
+#include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -7,6 +8,7 @@
 #include <assert.h>
 
 #include "chunk_renderer.h"
+#include "global.h"
 #include "util.h"
 #include "glutil.h"
 #include "linmath.h"
@@ -15,6 +17,7 @@
 #include "collision.h"
 
 #include <stb_image.h>
+#include <time.h>
 
 #ifndef M_PI
 #define M_PI 3.1415926535
@@ -52,8 +55,12 @@ static void mouse_click_callback(GLFWwindow *window, int button, int action, int
 static void keyboard_callback(GLFWwindow *window, int scan, int key, int action, int mods);
 
 static GLFWwindow *window;
+static pthread_mutex_t context_mtx;
 
 static Player player;
+static int frames;
+static float fps_time;
+static int old_chunk_count, old_update_count;
 
 int
 main()
@@ -76,6 +83,10 @@ main()
 	if(glewInit() != GLEW_OK)
 		return -3;
 
+	glfwSwapInterval(1);
+
+	pthread_mutex_init(&context_mtx, NULL);
+
 	world_init();
 	chunk_render_init();
 
@@ -89,6 +100,8 @@ main()
 
 	glfwShowWindow(window);
 	pre_time = glfwGetTime();
+	old_chunk_count = world_allocated_chunks_count();
+	old_update_count = chunk_render_update_count();
 	while(!glfwWindowShouldClose(window)) {
 		int w, h;
 		double curr_time = glfwGetTime();
@@ -101,18 +114,38 @@ main()
 		player_update(&player, delta);
 
 		glfwGetWindowSize(window, &w, &h);
+		lock_gl_context();
 		glViewport(0, 0, w, h);
 		glClearColor(0.5, 0.7, 0.9, 1.0);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-		chunk_render_set_camera(player.eye_position, player.camera_view, (float)w/h, 64);
+		unlock_gl_context();
+
+		chunk_render_set_camera(player.eye_position, player.camera_view, (float)w/h, 256);
 		chunk_render();
 
 		glfwSwapBuffers(window);
 		glfwPollEvents();
 
 		while(glGetError() != GL_NO_ERROR);
+
+		frames++;
+		fps_time += delta;
+		if(fps_time > 1.0) {
+			int current = world_allocated_chunks_count();
+			int cdelta = current - old_chunk_count;
+			old_chunk_count = current;
+			
+			int ucurrent = chunk_render_update_count();
+			int udelta = ucurrent - old_update_count;
+			old_update_count = ucurrent;
+			
+			printf("FPS: %d (%d chunks (%0.2f MB), %d new chunks, %d mesh updates)\n", frames, current, (current * sizeof(Chunk) / (1024.0 * 1024.0)), cdelta, udelta);
+			frames = 0;
+			fps_time = 0;
+		}
 	}
 
+	world_set_load_border(0, 0, 0, -2147483648);
 	chunk_render_terminate();
 	world_terminate();
 
@@ -234,7 +267,7 @@ player_update(Player *player, float delta)
 		player->old_chunk_y = chunk_y;
 		player->old_chunk_z = chunk_z;
 
-		world_set_load_border(chunk_x, chunk_y, chunk_z, 256);
+		world_set_load_border(chunk_x, chunk_y, chunk_z, 384);
 	}
 }
 
@@ -297,4 +330,18 @@ keyboard_callback(GLFWwindow *window, int key, int scan, int action, int mods)
 	if(key == GLFW_KEY_ESCAPE) {
 		locking = false;
 	}
+}
+
+void
+lock_gl_context()
+{
+	pthread_mutex_lock(&context_mtx);
+	glfwMakeContextCurrent(window);
+}
+
+void
+unlock_gl_context()
+{
+	glfwMakeContextCurrent(NULL);
+	pthread_mutex_unlock(&context_mtx);
 }
