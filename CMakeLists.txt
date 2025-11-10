@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 4.1)
 project(cubegame)
 
 add_subdirectory(lib/stb)
